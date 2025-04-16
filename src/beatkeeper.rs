@@ -392,32 +392,47 @@ impl BeatKeeper {
             self.time_since_bpm_change = Duration::from_secs(0);
         }
 
-
+        // This flag is required, because if the tempo changes the grid shift must be recalculated
+        // in the new BPM. Otherwise the grid shift assumes the previous tempo, while
+        // seconds_since_last_measure is calculated in the new tempo causing a jump until it is
+        // actually recalculated.
+        let mut calculate_grid_shift = false;
+        
         // --- Find grid offset
         // Clear the queue if the beat grid has changed, such as if:
         // - The master track has been changed
         // - The original BPM has been changed due to dynamic beat analysis or manual adjustment
         if masterdeck_index_changed || original_bpm_changed {
-            self.new_bar_measurements.clear();
+            // Keep the latest measurement since it is still valid
+            while self.new_bar_measurements.len() > 1{
+                self.new_bar_measurements.pop_front();
+            }
+            calculate_grid_shift = true;
         }
 
         let bps = self.last_original_bpm / 60.;
         let spb = 1. / bps;
         let samples_per_measure = (44100. * spb) as i64 * 4;
 
+        // How much playback position should have advanced since previous loop
         let expected_posdiff = (delta.as_micros() as f32 / 1_000_000. * 44100. * td.playback_speed) as i64;
         let posdiff = td.sample_position - self.last_pos;
         self.last_pos = td.sample_position;
         let expectation_error = (expected_posdiff - posdiff) as f32/expected_posdiff as f32;
         
+        // If there's a new beat, playback has advanced forward and playback position advancement is not greater than +/- 50% of expected value
         if self.last_beat.set(td.beat) && posdiff > 0 && expectation_error.abs() < 0.5{
+            // Subtract half of the time advancment, as that's the expected value.
             let shift = td.sample_position - posdiff/2 - ((td.beat - 1)as f32 * 44100. * spb) as i64;
             self.new_bar_measurements.push_back(shift);
             if self.new_bar_measurements.len() > 10{
                 self.new_bar_measurements.pop_front();
             }
 
+            calculate_grid_shift = true;
+        }
 
+        if calculate_grid_shift && !self.new_bar_measurements.is_empty(){
             // To avoid the seam problem when moduloing the values, center all measurements with
             // the assumption that the first value is good enough (should be +/- 1/update rate wrong)
             // This means that the queue must be cleared at any discontinuity in original BPM and
@@ -435,7 +450,7 @@ impl BeatKeeper {
         // println!("seconds since new measure: {}", seconds_since_new_measure);
         let subdivision = 4.;
 
-        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + (td.bar + if td.bar < 0 {0} else {-1}) as f32 * subdivision;
+        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + 0.*(td.bar + if td.bar < 0 {0} else {-1}) as f32 * subdivision;
 
         // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
         // Or maybe not, rather it looks like:
