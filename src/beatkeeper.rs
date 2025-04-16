@@ -92,6 +92,7 @@ pub struct Rekordbox {
     current_bpms: Vec<Value<f32>>,
     playback_speeds: Vec<Value<f32>>,
     beat_displays: Vec<Value<i32>>,
+    bar_displays: Vec<Value<i32>>,
     sample_positions: Vec<Value<i64>>,
     track_infos: Vec<PointerChainValue<[u8; 200]>>,
     deckcount: usize,
@@ -117,6 +118,7 @@ impl Rekordbox {
         let current_bpms = Value::pointers_to_vals(h, base, offsets.current_bpm)?;
         let playback_speeds = Value::pointers_to_vals(h, base, offsets.playback_speed)?;
         let beat_displays = Value::pointers_to_vals(h, base, offsets.beat_display)?;
+        let bar_displays = Value::pointers_to_vals(h, base, offsets.bar_display)?;
         let sample_positions = Value::pointers_to_vals(h, base, offsets.sample_position)?;
         let track_infos = PointerChainValue::pointers_to_vals(h, base, offsets.track_info);
 
@@ -128,6 +130,7 @@ impl Rekordbox {
             current_bpms,
             playback_speeds,
             beat_displays,
+            bar_displays,
             sample_positions,
             masterdeck_index: masterdeck_index_val,
             deckcount,
@@ -139,6 +142,7 @@ impl Rekordbox {
         let masterdeck_index = self.masterdeck_index.read()?.min(self.deckcount as u8 - 1);
         let sample_position = self.sample_positions[masterdeck_index as usize].read()?;
         let beat = self.beat_displays[masterdeck_index as usize].read()?;
+        let bar = self.bar_displays[masterdeck_index as usize].read()?;
         let current_bpm = self.current_bpms[masterdeck_index as usize].read()?;
         let playback_speed = self.playback_speeds[masterdeck_index as usize].read()?;
 
@@ -147,7 +151,8 @@ impl Rekordbox {
             masterdeck_index,
             sample_position,
             playback_speed,
-            beat
+            beat,
+            bar
         })
 
     }
@@ -184,6 +189,7 @@ struct TimingDataRaw{
     masterdeck_index: u8,
     sample_position: i64,
     beat: i32,
+    bar: i32,
     playback_speed: f32,
 }
 
@@ -419,7 +425,6 @@ impl BeatKeeper {
             // position
             let phase_shift_guess = samples_per_measure / 2 - self.new_bar_measurements.front().unwrap() % samples_per_measure;
             self.grid_shift = self.new_bar_measurements.iter().map(|x| (x + phase_shift_guess) % samples_per_measure).sum::<i64>() / self.new_bar_measurements.len() as i64 - phase_shift_guess;
-
         }
 
 
@@ -430,7 +435,7 @@ impl BeatKeeper {
         // println!("seconds since new measure: {}", seconds_since_new_measure);
         let subdivision = 4.;
 
-        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps;
+        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + (td.bar + if td.bar < 0 {0} else {-1}) as f32 * subdivision;
 
         // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
         // Or maybe not, rather it looks like:
@@ -444,8 +449,12 @@ impl BeatKeeper {
 
         for module in &mut self.running_modules {
             module.beat_update(beat);
+            module.time_update(td.sample_position as f32 / 44100.);
             if bpm_changed {
                 module.bpm_changed(self.bpm.value);
+            }
+            if original_bpm_changed {
+                module.original_bpm_changed(self.last_original_bpm);
             }
         }
 

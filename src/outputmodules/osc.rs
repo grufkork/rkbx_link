@@ -50,12 +50,18 @@ impl Osc {
 
 impl OutputModule for Osc {
     fn bpm_changed(&mut self, bpm: f32){
-        self.send_float("/bpm", bpm);
+        self.send_float("/bpm/current", bpm);
+    }
+
+    fn original_bpm_changed(&mut self, bpm: f32){
+        self.send_float("/bpm/original", bpm);
     }
 
     fn beat_update(&mut self, beat: f32){
-        self.send_float("/beat/total", beat);
-        self.send_float("/beat/fraction", beat % 1.);
+        self.send_float("/beat/0", beat);
+        self.send_float("/beat/1", beat % 1.);
+        self.send_float("/beat/2", beat % 2.);
+        self.send_float("/beat/4", beat % 4.);
     }
 
     fn track_changed(&mut self, track: TrackInfo, deck: usize){

@@ -8,7 +8,7 @@ app.repo grufkork/rkbx_link/rewrite
 # Rekordbox version to target
 keeper.rekordbox_version 7.0.8
 # How often to fetch song position in Hz
-keeper.update_rate 60
+keeper.update_rate 120
 # Every nth update, perform a slow update
 keeper.slow_update_every_nth 10
 # Delay compensation in ms

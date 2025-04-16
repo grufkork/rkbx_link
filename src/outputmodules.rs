@@ -9,7 +9,9 @@ pub mod setlist;
 
 pub trait OutputModule {
     fn bpm_changed(&mut self, _bpm: f32){}
+    fn original_bpm_changed(&mut self, _bpm: f32){}
     fn beat_update(&mut self, _beat: f32){}
+    fn time_update(&mut self, _time: f32){}
 
     fn track_changed(&mut self, _track: TrackInfo, _deck: usize){}
     fn master_track_changed(&mut self, _track: &TrackInfo){}

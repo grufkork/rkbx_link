@@ -16,6 +16,7 @@ impl RekordboxOffsets {
         let mut current_bpm = vec![];
         let mut playback_speed = vec![];
         let mut beat_display = vec![];
+        let mut bar_display = vec![];
         let mut track_info = vec![];
 
         while rows.peek().is_some() {
@@ -23,6 +24,8 @@ impl RekordboxOffsets {
             current_bpm.push(Pointer::from_string(rows.next()?, logger));
             logger.debug("Beat display");
             beat_display.push(Pointer::from_string(rows.next()?, logger));
+            logger.debug("Bar display");
+            bar_display.push(Pointer::from_string(rows.next()?, logger));
             logger.debug("Playback speed");
             playback_speed.push(Pointer::from_string(rows.next()?, logger));
             logger.debug("Sample position");
@@ -34,6 +37,7 @@ impl RekordboxOffsets {
         Some(RekordboxOffsets {
             rbversion: rb_version,
             beat_display,
+            bar_display,
             sample_position,
             current_bpm,
             playback_speed,
@@ -88,6 +92,7 @@ pub struct RekordboxOffsets {
     pub current_bpm: Vec<Pointer>,
     pub playback_speed: Vec<Pointer>,
     pub beat_display: Vec<Pointer>,
+    pub bar_display: Vec<Pointer>,
     pub track_info: Vec<Pointer>,
 }
 
