@@ -242,6 +242,8 @@ pub struct BeatKeeper {
     tracks: Vec<ChangeTrackedValue<TrackInfo>>,
     logger: ScopedLogger,
     last_error: Option<ReadError>,
+    last_reported_bar: ChangeTrackedValue<i32>,
+    last_reported_bar_at_measured_bar: i32
 }
 
 impl BeatKeeper {
@@ -283,6 +285,8 @@ impl BeatKeeper {
             last_pos: 0,
             grid_shift: 0,
             new_bar_measurements: VecDeque::new(),
+            last_reported_bar: ChangeTrackedValue::new(-1),
+            last_reported_bar_at_measured_bar: 0,
             last_playback_speed: ChangeTrackedValue::new(1.),
         };
 
@@ -453,7 +457,26 @@ impl BeatKeeper {
         // println!("seconds since new measure: {}", seconds_since_new_measure);
         let subdivision = 4.;
 
-        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + 0.*(td.bar + if td.bar < 0 {0} else {-1}) as f32 * subdivision;
+        let bar = (seconds_since_new_measure / (subdivision * spb) * bps).floor() as i32;
+
+        // This is required because the bar value update is delayed.
+        // Instead we store the latest known correct bar (we assume that when the value changes it is correct)
+        // and check how far we've come relative to that
+        if self.last_reported_bar.set(td.bar){
+            self.last_reported_bar_at_measured_bar = bar;
+        }
+
+        let guessed_bar = td.bar + bar - self.last_reported_bar_at_measured_bar;
+
+        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + 0.*(guessed_bar - (td.bar >=0) as i32) as f32 * subdivision;
+        // println!("{}", td.bar);
+
+        for _ in 0..((beat * 10. % (16. * 10.)) as usize){
+            // print!("#");
+        }
+        // println!();
+
+        // if td.bar < 0 {0} else {-1}
 
         // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
         // Or maybe not, rather it looks like:

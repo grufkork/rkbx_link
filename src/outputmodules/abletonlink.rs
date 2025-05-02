@@ -8,7 +8,8 @@ pub struct AbletonLink {
     state: SessionState,
     last_num_links: u64,
     logger: ScopedLogger,
-    last_beat: f32
+    last_beat: f32,
+    cumulative_error: f32,
 }
 
 impl AbletonLink {
@@ -21,7 +22,7 @@ impl AbletonLink {
 
         link.enable(true);
 
-        Box::new(AbletonLink { link, state, last_num_links: 9999, logger, last_beat: 0.})
+        Box::new(AbletonLink { link, state, last_num_links: 9999, logger, last_beat: 0., cumulative_error: 0.0})
     }
 }
 
@@ -37,10 +38,20 @@ impl OutputModule for AbletonLink {
             return; 
         }
         // let target_beat = (beat as f64) % 4.;
-
-        self.state
-            .request_beat_at_time(beat.into(), self.link.clock_micros(), 4.);
-        self.link.commit_app_session_state(&self.state);
+        
+        
+        let link_beat = self.state.beat_at_time(self.link.clock_micros(), 4.0) as f32;
+        let diff = (link_beat - beat + 2.0) % 4.0 -2.0;
+        // println!("{diff}");
+        let error = (diff % 4.0 + 4.0) % 4.0;
+        self.cumulative_error += diff;
+        // println!("cumerr {}", self.cumulative_error);
+        if self.cumulative_error.abs() > 0.05 {
+            self.cumulative_error = 0.0;
+            // println!("SET -----------------------------------------------------");
+            self.state.force_beat_at_time(beat.into(), self.link.clock_micros() as u64, 4.);
+            self.link.commit_app_session_state(&self.state);
+        }
         self.last_beat = beat;
     }
 
