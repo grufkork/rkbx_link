@@ -234,6 +234,7 @@ pub struct BeatKeeper {
     last_original_bpm: f32,
     time_since_bpm_change: Duration,
     last_beat: ChangeTrackedValue<i32>,
+    last_playback_speed: ChangeTrackedValue<f32>,
     last_pos: i64,
     grid_shift: i64,
     new_bar_measurements: VecDeque<i64>,
@@ -282,6 +283,7 @@ impl BeatKeeper {
             last_pos: 0,
             grid_shift: 0,
             new_bar_measurements: VecDeque::new(),
+            last_playback_speed: ChangeTrackedValue::new(1.),
         };
 
         let mut rekordbox = None;
@@ -375,6 +377,7 @@ impl BeatKeeper {
         let original_bpm = td.current_bpm / td.playback_speed;
         let original_bpm_diff = original_bpm - self.last_original_bpm;
         let bpm_changed = self.bpm.set(td.current_bpm);
+        let playback_speed_changed = self.last_playback_speed.set(td.playback_speed);
         
 
         // --- Update original BPM
@@ -470,6 +473,10 @@ impl BeatKeeper {
             }
             if original_bpm_changed {
                 module.original_bpm_changed(self.last_original_bpm);
+            }
+
+            if playback_speed_changed{
+                module.playback_speed_changed(td.playback_speed);
             }
         }
 

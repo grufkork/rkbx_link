@@ -17,7 +17,7 @@ keeper.delay_compensation 0
 
 
 # == Open Sound Control ==
-osc.enabled false
+osc.enabled true
 # Local address to bind to
 osc.source 127.0.0.1:4450
 # Remore address to send to
