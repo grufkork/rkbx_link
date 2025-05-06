@@ -130,11 +130,21 @@ fn update_routine(repo: &str, logger: ScopedLogger){
     }
 
     if Path::new("./offsets").exists(){
-        if fs::read_to_string("./version_offsets").unwrap().trim().parse::<i32>().unwrap() < new_offset_version{
-            logger.info("Offset update available");
-            update_offsets = true;
+        if let Ok(version_offsets) = fs::read_to_string("./version_offsets"){
+            if let Ok(version) = version_offsets.trim().parse::<i32>(){
+                if version < new_offset_version {
+                    logger.info("Offset update available");
+                    update_offsets = true;
+                }else{
+                    logger.info(&format!("Offsets up to date (v{new_offset_version})"));
+                }
+            }else{
+                logger.warn("Failed to parse version_offsets file");
+                update_offsets = true;
+            }
         }else{
-            logger.info(&format!("Offsets up to date (v{new_offset_version})"));
+            logger.warn("Failed to read version_offsets file");
+            update_offsets = true;
         }
     }else{
         logger.warn("Missing offsets file");
@@ -160,7 +170,7 @@ fn get_file(path: &str, repo: &str) -> Result<String, String> {
         return Err(format!("Get error: {}", &url));
     };
     if res.status().is_success() {
-        Ok(res.text().unwrap())
+        Ok(res.text().map_err(|e| e.to_string())?)
     } else {
         Err(format!("Get error {}: {}", res.status(), &url))
     }
