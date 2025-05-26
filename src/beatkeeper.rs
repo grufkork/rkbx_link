@@ -140,7 +140,6 @@ impl Rekordbox {
 
     fn read_timing_data(&self) -> Result<TimingDataRaw, ReadError> {
         let masterdeck_index = self.masterdeck_index.read()?.min(self.deckcount as u8 - 1);
-        println!("Masterdeck index: {masterdeck_index}");
         let sample_position = self.sample_positions[masterdeck_index as usize].read()?;
         let beat = self.beat_displays[masterdeck_index as usize].read()?;
         let bar = self.bar_displays[masterdeck_index as usize].read()?;
@@ -412,6 +411,8 @@ impl BeatKeeper {
         // Clear the queue if the beat grid has changed, such as if:
         // - The master track has been changed
         // - The original BPM has been changed due to dynamic beat analysis or manual adjustment
+        //
+        // TODO if track title changes, also reset
         if masterdeck_index_changed || original_bpm_changed {
             // Keep the latest measurement since it is still valid
             while self.new_bar_measurements.len() > 1{

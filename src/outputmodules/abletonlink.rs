@@ -10,10 +10,11 @@ pub struct AbletonLink {
     logger: ScopedLogger,
     last_beat: f32,
     cumulative_error: f32,
+    cumulative_error_tolerance: f32,
 }
 
 impl AbletonLink {
-    pub fn create(_conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
+    pub fn create(conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
         let link = AblLink::new(120.);
         link.enable(false);
 
@@ -22,7 +23,15 @@ impl AbletonLink {
 
         link.enable(true);
 
-        Box::new(AbletonLink { link, state, last_num_links: 9999, logger, last_beat: 0., cumulative_error: 0.0})
+        Box::new(AbletonLink { 
+            link, 
+            state, 
+            last_num_links: 9999, 
+            logger, 
+            last_beat: 0., 
+            cumulative_error: 0.0, 
+            cumulative_error_tolerance: conf.get_or_default("cumulative_error_tolerance", 0.05)
+        })
     }
 }
 
@@ -43,10 +52,9 @@ impl OutputModule for AbletonLink {
         let link_beat = self.state.beat_at_time(self.link.clock_micros(), 4.0) as f32;
         let diff = (link_beat - beat + 2.0) % 4.0 -2.0;
         // println!("{diff}");
-        let error = (diff % 4.0 + 4.0) % 4.0;
         self.cumulative_error += diff;
         // println!("cumerr {}", self.cumulative_error);
-        if self.cumulative_error.abs() > 0.05 {
+        if self.cumulative_error.abs() > self.cumulative_error_tolerance {
             self.cumulative_error = 0.0;
             // println!("SET -----------------------------------------------------");
             self.state.force_beat_at_time(beat.into(), self.link.clock_micros() as u64, 4.);

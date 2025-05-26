@@ -28,6 +28,8 @@ osc.destination 127.0.0.1:4460
 
 # == Ableton Link ==
 link.enabled true
+# Cumulative time error before forcing a correction
+link.cumulative_error_tolerance 0.05
 
 
 # == Write current track to file ==
