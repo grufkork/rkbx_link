@@ -21,7 +21,7 @@ impl File{
 impl OutputModule for File {
     fn master_track_changed(&mut self, track: &crate::beatkeeper::TrackInfo) {
         if let Err(e) = fs::write(&self.filename, format!("{}\n{}\n{}", track.title, track.artist, track.album)){
-            self.logger.err(&format!("Failed to write to file: {}", e));
+            self.logger.err(&format!("Failed to write to file: {e}"));
 
         }
 

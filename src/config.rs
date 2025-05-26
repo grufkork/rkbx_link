@@ -53,7 +53,7 @@ impl Config{
 
     pub fn get<T: std::str::FromStr>(&self, key: &str) -> Option<T>{
         let key = if let Some(namespace) = &self.namespace{
-            format!("{}.{}", namespace, key)
+            format!("{namespace}.{key}")
         }else{
             key.to_string()
         };
@@ -65,7 +65,7 @@ impl Config{
                 None
             }
         }else{
-            self.logger.warn(&format!("Missing config key '{}'", key));
+            self.logger.warn(&format!("Missing config key '{key}'"));
             None
         }
     }

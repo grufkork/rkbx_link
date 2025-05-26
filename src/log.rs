@@ -41,8 +41,8 @@ impl Logger{
 
         
         self.stdout.borrow_mut().set_color(&self.colours[level as usize]).unwrap();
-        if writeln!(&mut self.stdout.borrow_mut(), "[{}]  {}", source, message).is_err(){
-            println!("Log failed: [{}]  {}", source, message);
+        if writeln!(&mut self.stdout.borrow_mut(), "[{source}]  {message}").is_err(){
+            println!("Log failed: [{source}]  {message}");
         }
     }
 

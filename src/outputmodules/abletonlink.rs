@@ -59,7 +59,7 @@ impl OutputModule for AbletonLink {
         let num_links = self.link.num_peers();
         if num_links != self.last_num_links {
             self.last_num_links = num_links;
-            self.logger.info(&format!("Link peers: {}", num_links));
+            self.logger.info(&format!("Link peers: {num_links}"));
         }
     } 
 }

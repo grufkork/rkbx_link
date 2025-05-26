@@ -19,7 +19,7 @@ fn main() {
 
     println!();
     println!("=====================");
-    println!("Rekordbox Link v{}", VERSION);
+    println!("Rekordbox Link v{VERSION}");
     println!("Repo     https://github.com/grufkork/rkbx_link");
     println!("Updates  [BUY/DOWNLOAD LINK HERE]");
     println!("Missing a feature? Spotted a bug? Just shoot me a message!");
@@ -74,12 +74,12 @@ fn main() {
         versions[0].clone()
     };
 
-    applogger.info(&format!("Targeting Rekordbox version: {}", selected_version));
+    applogger.info(&format!("Targeting Rekordbox version: {selected_version}"));
 
     let offset = if let Some(offset) = offsets.get(&selected_version) {
         offset
     }else{
-        applogger.err(&format!("Offsets for Rekordbox version {} not available", selected_version));
+        applogger.err(&format!("Offsets for Rekordbox version {selected_version} not available"));
         return;
     };
 
@@ -107,7 +107,7 @@ fn update_routine(repo: &str, logger: ScopedLogger){
         logger.info(&format!("Program up to date (v{new_exe_version})"));
     } else {
         logger.warn(" ");
-        logger.warn(&format!("   !! Executable update available: v{} !!", new_exe_version));
+        logger.warn(&format!("   !! Executable update available: v{new_exe_version} !!"));
         logger.warn("Update the program to get the latest offset updates");
         logger.warn("");
         return;
@@ -119,7 +119,7 @@ fn update_routine(repo: &str, logger: ScopedLogger){
         return;
     };
     let Ok(new_offset_version) = new_offset_version.trim().parse::<i32>() else {
-        logger.err(&format!("Failed to parse new offset version: {}", new_offset_version));
+        logger.err(&format!("Failed to parse new offset version: {new_offset_version}"));
         return;
     };
 

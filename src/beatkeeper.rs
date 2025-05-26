@@ -140,7 +140,7 @@ impl Rekordbox {
 
     fn read_timing_data(&self) -> Result<TimingDataRaw, ReadError> {
         let masterdeck_index = self.masterdeck_index.read()?.min(self.deckcount as u8 - 1);
-        println!("Masterdeck index: {}", masterdeck_index);
+        println!("Masterdeck index: {masterdeck_index}");
         let sample_position = self.sample_positions[masterdeck_index as usize].read()?;
         let beat = self.beat_displays[masterdeck_index as usize].read()?;
         let bar = self.bar_displays[masterdeck_index as usize].read()?;
@@ -351,17 +351,17 @@ impl BeatKeeper {
                 self.logger.err("Rekordbox process not found!");
             },
             TAExternalError::SnapshotFailed(e) => {
-                self.logger.err(&format!("Snapshot failed: {}", e));
+                self.logger.err(&format!("Snapshot failed: {e}"));
                 self.logger.info("    Ensure Rekordbox is running!");
             },
             TAExternalError::ReadMemoryFailed(e) => {
-                self.logger.err(&format!("Read memory failed: {}", e));
+                self.logger.err(&format!("Read memory failed: {e}"));
                 self.logger.info("    Check your Rekordbox version, or just wait for Rekordbox to start fully.");
                 self.logger.info("    If the issue persists, check your configured Rekordbox version or try updating the offsets.");
                 self.logger.info("    If nothing works, wait for an update - or enable Debug in config and send this entire error message to @grufkork.");
             },
             TAExternalError::WriteMemoryFailed(e) => {
-                self.logger.err(&format!("Write memory failed: {}", e));
+                self.logger.err(&format!("Write memory failed: {e}"));
             },
         };
         if let Some(p) = &e.pointer{
@@ -527,7 +527,7 @@ impl BeatKeeper {
 
         if masterdeck_index_changed || masterdeck_track_changed {
             let track = &self.tracks[self.masterdeck_index.value].value;
-            self.logger.debug(&format!("Master track changed: {:?}", track));
+            self.logger.debug(&format!("Master track changed: {track:?}"));
             for module in &mut self.running_modules {
                 module.master_track_changed(track);
             }

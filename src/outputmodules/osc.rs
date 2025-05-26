@@ -100,7 +100,7 @@ impl OutputModule for Osc {
             } else {
                 "No source!!".to_string()
             };
-            self.logger.info(&format!("Sending {} -> {}", source_addr, target_addr));
+            self.logger.info(&format!("Sending {source_addr} -> {target_addr}"));
         }
     }
 }
