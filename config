@@ -14,6 +14,9 @@ keeper.slow_update_every_nth 10
 # Delay compensation in ms
 # Positive values advance the output
 keeper.delay_compensation 0
+# Number of updates to ignore bar-sized jitter for
+keeper.bar_jitter_tolerance 10
+
 
 
 # == Open Sound Control ==

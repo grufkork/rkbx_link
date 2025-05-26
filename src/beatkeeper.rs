@@ -140,6 +140,7 @@ impl Rekordbox {
 
     fn read_timing_data(&self) -> Result<TimingDataRaw, ReadError> {
         let masterdeck_index = self.masterdeck_index.read()?.min(self.deckcount as u8 - 1);
+        println!("Masterdeck index: {}", masterdeck_index);
         let sample_position = self.sample_positions[masterdeck_index as usize].read()?;
         let beat = self.beat_displays[masterdeck_index as usize].read()?;
         let bar = self.bar_displays[masterdeck_index as usize].read()?;
@@ -233,7 +234,7 @@ pub struct BeatKeeper {
     bpm: ChangeTrackedValue<f32>,
     last_original_bpm: f32,
     time_since_bpm_change: Duration,
-    last_beat: ChangeTrackedValue<i32>,
+    last_beat: ChangeTrackedValue<i32>, // Last beat read from GUI
     last_playback_speed: ChangeTrackedValue<f32>,
     last_pos: i64,
     grid_shift: i64,
@@ -242,8 +243,9 @@ pub struct BeatKeeper {
     tracks: Vec<ChangeTrackedValue<TrackInfo>>,
     logger: ScopedLogger,
     last_error: Option<ReadError>,
-    last_reported_bar: ChangeTrackedValue<i32>,
-    last_reported_bar_at_measured_bar: i32
+    measurements_since_bar_jump: i32, // Loops since a bar-sized jump in beat was detected
+    last_calculated_beat: f32, // Previous total calculated beat
+    bar_jitter_tolerance: i32, // Updates
 }
 
 impl BeatKeeper {
@@ -285,9 +287,10 @@ impl BeatKeeper {
             last_pos: 0,
             grid_shift: 0,
             new_bar_measurements: VecDeque::new(),
-            last_reported_bar: ChangeTrackedValue::new(-1),
-            last_reported_bar_at_measured_bar: 0,
             last_playback_speed: ChangeTrackedValue::new(1.),
+            measurements_since_bar_jump: 0,
+            last_calculated_beat: 0.0,
+            bar_jitter_tolerance: keeper_config.get_or_default("bar_jitter_tolerance", 10), // seconds
         };
 
         let mut rekordbox = None;
@@ -454,29 +457,31 @@ impl BeatKeeper {
         // Sample position seems to always be counted as if the track is 44100Hz
         // - even when track or audio interface is 48kHz
         let seconds_since_new_measure = (td.sample_position - self.grid_shift + self.offset_samples) as f32 / 44100.;
-        // println!("seconds since new measure: {}", seconds_since_new_measure);
         let subdivision = 4.;
 
-        let bar = (seconds_since_new_measure / (subdivision * spb) * bps).floor() as i32;
-
-        // This is required because the bar value update is delayed.
-        // Instead we store the latest known correct bar (we assume that when the value changes it is correct)
-        // and check how far we've come relative to that
-        if self.last_reported_bar.set(td.bar){
-            self.last_reported_bar_at_measured_bar = bar;
+        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + (td.bar - (td.bar > 0) as i32)  as f32 * subdivision; 
+        
+        // The GUI does not update as frequently as the playback position. This means that reading
+        // the bar offset from the GUI will not be accurate - it might change both before or after
+        // the bar actually changes. If not accounted for, this means that for a split second
+        // around the bar change the beat might jump 4 beats in either direction.
+        // This might however trigger false positives for 1-bar loops/jumps, so we only ignore the
+        // jump for a little while.
+        let beat_diff = beat - self.last_calculated_beat;
+        if (beat_diff.abs() - 4.0).abs() < 0.1{
+            self.measurements_since_bar_jump += 1;
+            if self.measurements_since_bar_jump < self.bar_jitter_tolerance{
+                beat -= beat_diff.signum() * 4.0;
+            }
+        }else{
+            self.measurements_since_bar_jump = 0;
         }
+        self.last_calculated_beat = beat;
 
-        let guessed_bar = td.bar + bar - self.last_reported_bar_at_measured_bar;
-
-        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + 0.*(guessed_bar - (td.bar >=0) as i32) as f32 * subdivision;
-        // println!("{}", td.bar);
-
-        for _ in 0..((beat * 10. % (16. * 10.)) as usize){
-            // print!("#");
-        }
+        // for _ in 0..((beat * 10. % (16. * 10.)) as usize){
+        //     print!("#");
+        // }
         // println!();
-
-        // if td.bar < 0 {0} else {-1}
 
         // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
         // Or maybe not, rather it looks like:
