@@ -16,6 +16,8 @@ keeper.slow_update_every_nth 10
 keeper.delay_compensation 0
 # Number of updates to ignore bar-sized jitter for
 keeper.bar_jitter_tolerance 10
+keeper.keep_warm true
+keeper.decks 2
 
 
 

@@ -138,23 +138,25 @@ impl Rekordbox {
         })
     }
 
-    fn read_timing_data(&self) -> Result<TimingDataRaw, ReadError> {
-        let masterdeck_index = self.masterdeck_index.read()?.min(self.deckcount as u8 - 1);
-        let sample_position = self.sample_positions[masterdeck_index as usize].read()?;
-        let beat = self.beat_displays[masterdeck_index as usize].read()?;
-        let bar = self.bar_displays[masterdeck_index as usize].read()?;
-        let current_bpm = self.current_bpms[masterdeck_index as usize].read()?;
-        let playback_speed = self.playback_speeds[masterdeck_index as usize].read()?;
+    fn read_timing_data(&self, deck: usize) -> Result<TimingDataRaw, ReadError> {
+        let sample_position = self.sample_positions[deck].read()?;
+        let beat = self.beat_displays[deck].read()?;
+        let bar = self.bar_displays[deck].read()?;
+        let current_bpm = self.current_bpms[deck].read()?;
+        let playback_speed = self.playback_speeds[deck].read()?;
 
         Ok(TimingDataRaw{
             current_bpm,
-            masterdeck_index,
             sample_position,
             playback_speed,
             beat,
             bar
         })
 
+    }
+
+    fn read_masterdeck_index(&self) -> Result<usize, ReadError> {
+        Ok(self.masterdeck_index.read()? as usize)
     }
 
     fn get_track_infos(&self) -> Result<Vec<TrackInfo>, ReadError> {
@@ -186,7 +188,6 @@ impl Rekordbox {
 #[derive(Debug)]
 struct TimingDataRaw{
     current_bpm: f32,
-    masterdeck_index: u8,
     sample_position: i64,
     beat: i32,
     bar: i32,
@@ -231,21 +232,21 @@ pub struct BeatKeeper {
     masterdeck_index: ChangeTrackedValue<usize>,
     offset_samples: i64,
     bpm: ChangeTrackedValue<f32>,
-    last_original_bpm: f32,
-    time_since_bpm_change: Duration,
-    last_beat: ChangeTrackedValue<i32>, // Last beat read from GUI
-    last_playback_speed: ChangeTrackedValue<f32>,
-    last_pos: i64,
-    grid_shift: i64,
-    new_bar_measurements: VecDeque<i64>,
+    original_bpm: ChangeTrackedValue<f32>,
+    playback_speed: ChangeTrackedValue<f32>,
     running_modules: Vec<Box<dyn OutputModule>>,
-    tracks: Vec<ChangeTrackedValue<TrackInfo>>,
+
+    track_infos: Vec<ChangeTrackedValue<TrackInfo>>,
+    track_trackers: Vec<TrackTracker>,
+
     logger: ScopedLogger,
     last_error: Option<ReadError>,
-    measurements_since_bar_jump: i32, // Loops since a bar-sized jump in beat was detected
-    last_calculated_beat: f32, // Previous total calculated beat
     bar_jitter_tolerance: i32, // Updates
+    keep_warm: bool,
+    decks: usize,
 }
+
+
 
 impl BeatKeeper {
     pub fn start(
@@ -274,22 +275,26 @@ impl BeatKeeper {
 
         let mut keeper = BeatKeeper {
             masterdeck_index: ChangeTrackedValue::new(0),
-            time_since_bpm_change: Duration::from_secs(0),
             offset_samples: (keeper_config.get_or_default("delay_compensation", 0.) * 44100. / 1000.) as i64,
             bpm: ChangeTrackedValue::new(120.),
-            last_original_bpm: 120.,
-            tracks: vec![ChangeTrackedValue::new(Default::default()); 4],
+            original_bpm: ChangeTrackedValue::new(120.),
+            playback_speed: ChangeTrackedValue::new(1.),
+            track_infos: vec![ChangeTrackedValue::new(Default::default()); 4],
             running_modules,
             logger: logger.clone(),
             last_error: None,
-            last_beat: ChangeTrackedValue::new(1),
-            last_pos: 0,
-            grid_shift: 0,
-            new_bar_measurements: VecDeque::new(),
-            last_playback_speed: ChangeTrackedValue::new(1.),
-            measurements_since_bar_jump: 0,
-            last_calculated_beat: 0.0,
+            track_trackers: (0..4).map(|_| TrackTracker::new()).collect(),
+            // last_beat: ChangeTrackedValue::new(1),
+            // last_pos: 0,
+            // grid_shift: 0,
+            // new_bar_measurements: VecDeque::new(),
+            // last_playback_speed: ChangeTrackedValue::new(1.),
+            // measurements_since_bar_jump: 0,
+            // last_calculated_beat: 0.0,
             bar_jitter_tolerance: keeper_config.get_or_default("bar_jitter_tolerance", 10), // seconds
+            keep_warm: keeper_config.get_or_default("keep_warm", true),
+            decks: keeper_config.get_or_default("decks", 4),
+
         };
 
         let mut rekordbox = None;
@@ -310,6 +315,7 @@ impl BeatKeeper {
                     
                     rekordbox = None;
                     logger.err("Connection to Rekordbox lost");
+                    thread::sleep(Duration::from_secs(1));
                     logger.info("Reconnecting...");
 
                 }else{
@@ -373,18 +379,122 @@ impl BeatKeeper {
     }
 
     fn update(&mut self, rb: &Rekordbox, slow_update: bool, delta: Duration) -> Result<(), ReadError> {
-        let td = rb.read_timing_data()?;
-
-        let masterdeck_index_changed = self.masterdeck_index.set(td.masterdeck_index as usize);
+        // let masterdeck_index_changed = self.masterdeck_index.set(td.masterdeck_index as usize);
+        let masterdeck_index_changed = self.masterdeck_index.set(rb.read_masterdeck_index()?);
         if self.masterdeck_index.value >= rb.deckcount {
             self.masterdeck_index.value = 0;
         }
 
+        let mut tracker_data = None;
+        let trackers = &mut self.track_trackers;
+
+        for (i, tracker) in trackers[0..self.decks].iter_mut().enumerate() {
+        // for (i, tracker) in trackers.iter_mut().enumerate() {
+            if i == self.masterdeck_index.value{
+                tracker_data = Some(tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta)?);
+            }else if self.keep_warm {
+                tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta)?;
+            }
+        }
+
+        if let Some(tracker_data) = tracker_data {
+            for _ in 0..((tracker_data.beat * 10. % (16. * 10.)) as usize){
+                print!("#");
+            }
+            println!();
+            // println!("{}", tracker_data.beat);
+            for module in &mut self.running_modules {
+                module.beat_update(tracker_data.beat);
+                module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
+                if self.bpm.set(tracker_data.timing_data_raw.current_bpm) {
+                    module.bpm_changed(self.bpm.value);
+                }
+                if self.original_bpm.set(tracker_data.original_bpm) {
+                    module.original_bpm_changed(self.original_bpm.value);
+                }
+
+                if self.playback_speed.set(tracker_data.timing_data_raw.playback_speed) {
+                    module.playback_speed_changed(self.playback_speed.value);
+                }
+            }
+        }else{
+            println!("ERRRRR");
+        }
+
+
+
+
+        let mut masterdeck_track_changed = false;
+
+        if slow_update{
+            for (i, track) in rb.get_track_infos()?.iter().enumerate(){
+                if self.track_infos[i].set(track.clone()){
+                    for module in &mut self.running_modules {
+                        module.track_changed(track.clone(), i);
+                    }
+                    masterdeck_track_changed |= self.masterdeck_index.value == i;
+                }
+            }
+            for module in &mut self.running_modules{
+                module.slow_update();
+            }
+        }
+
+        if masterdeck_index_changed || masterdeck_track_changed {
+            let track = &self.track_infos[self.masterdeck_index.value].value;
+            self.logger.debug(&format!("Master track changed: {track:?}"));
+            for module in &mut self.running_modules {
+                module.master_track_changed(track);
+            }
+
+        }
+
+        Ok(())
+    }
+
+}
+
+struct TrackTrackerResult {
+    beat: f32,
+    original_bpm: f32,
+    timing_data_raw: TimingDataRaw,
+}
+
+struct TrackTracker{
+    last_original_bpm: f32,
+    time_since_bpm_change: Duration,
+    last_beat: ChangeTrackedValue<i32>, // Last beat read from GUI
+    last_pos: i64,
+    grid_shift: i64,
+    new_bar_measurements: VecDeque<i64>,
+    measurements_since_bar_jump: i32, // Loops since a bar-sized jump in beat was detected
+    last_calculated_beat: f32, // Previous total calculated beat
+    track_changed: bool, // External flag to indicate that the track has changed
+}
+
+impl TrackTracker {
+    fn new() -> Self {
+        Self {
+            last_original_bpm: 120.,
+            time_since_bpm_change: Duration::from_secs(0),
+            last_beat: ChangeTrackedValue::new(1),
+            last_pos: 0,
+            grid_shift: 0,
+            new_bar_measurements: VecDeque::new(),
+            measurements_since_bar_jump: 0,
+            last_calculated_beat: 0.0,
+            track_changed: false,
+        }
+    }
+
+    fn update(&mut self, rb: &Rekordbox, bar_jitter_tolerance: i32, offset_samples: i64, deck: usize, delta: Duration) -> Result<TrackTrackerResult, ReadError>{
+        let td = rb.read_timing_data(deck)?;
+
+
+
         let original_bpm = td.current_bpm / td.playback_speed;
         let original_bpm_diff = original_bpm - self.last_original_bpm;
-        let bpm_changed = self.bpm.set(td.current_bpm);
-        let playback_speed_changed = self.last_playback_speed.set(td.playback_speed);
-        
+
 
         // --- Update original BPM
         let mut original_bpm_changed = false;
@@ -406,31 +516,33 @@ impl BeatKeeper {
         // seconds_since_last_measure is calculated in the new tempo causing a jump until it is
         // actually recalculated.
         let mut calculate_grid_shift = false;
-        
+
         // --- Find grid offset
         // Clear the queue if the beat grid has changed, such as if:
         // - The master track has been changed
         // - The original BPM has been changed due to dynamic beat analysis or manual adjustment
-        //
-        // TODO if track title changes, also reset
-        if masterdeck_index_changed || original_bpm_changed {
+        if original_bpm_changed {
             // Keep the latest measurement since it is still valid
             while self.new_bar_measurements.len() > 1{
                 self.new_bar_measurements.pop_front();
             }
             calculate_grid_shift = true;
         }
+        if self.track_changed {
+            self.new_bar_measurements.clear();
+            self.track_changed = false;
+        }
 
         let bps = self.last_original_bpm / 60.;
         let spb = 1. / bps;
-        let samples_per_measure = (44100. * spb) as i64 * 4;
+        let samples_per_measure = (44100. * spb) as i64 * 4; // TODO: This can be zero, leading to division by zero errors when moduloing
 
         // How much playback position should have advanced since previous loop
         let expected_posdiff = (delta.as_micros() as f32 / 1_000_000. * 44100. * td.playback_speed) as i64;
         let posdiff = td.sample_position - self.last_pos;
         self.last_pos = td.sample_position;
         let expectation_error = (expected_posdiff - posdiff) as f32/expected_posdiff as f32;
-        
+
         // If there's a new beat, playback has advanced forward and playback position advancement is not greater than +/- 50% of expected value
         if self.last_beat.set(td.beat) && posdiff > 0 && expectation_error.abs() < 0.5{
             // Subtract half of the time advancment, as that's the expected value.
@@ -457,11 +569,14 @@ impl BeatKeeper {
 
         // Sample position seems to always be counted as if the track is 44100Hz
         // - even when track or audio interface is 48kHz
-        let seconds_since_new_measure = (td.sample_position - self.grid_shift + self.offset_samples) as f32 / 44100.;
+        let seconds_since_new_measure = (td.sample_position - self.grid_shift + offset_samples) as f32 / 44100.;
         let subdivision = 4.;
 
-        let mut beat = (seconds_since_new_measure % (subdivision * spb)) * bps + (td.bar - (td.bar > 0) as i32)  as f32 * subdivision; 
-        
+        // println!("{}", td.bar);
+        // println!("{}", (seconds_since_new_measure % (subdivision * spb)) * bps);
+
+        let mut beat = ((seconds_since_new_measure) % (subdivision * spb)) * bps + (td.bar - (td.bar > 0) as i32)  as f32 * subdivision; 
+
         // The GUI does not update as frequently as the playback position. This means that reading
         // the bar offset from the GUI will not be accurate - it might change both before or after
         // the bar actually changes. If not accounted for, this means that for a split second
@@ -471,7 +586,7 @@ impl BeatKeeper {
         let beat_diff = beat - self.last_calculated_beat;
         if (beat_diff.abs() - 4.0).abs() < 0.1{
             self.measurements_since_bar_jump += 1;
-            if self.measurements_since_bar_jump < self.bar_jitter_tolerance{
+            if self.measurements_since_bar_jump < bar_jitter_tolerance{
                 beat -= beat_diff.signum() * 4.0;
             }
         }else{
@@ -479,10 +594,7 @@ impl BeatKeeper {
         }
         self.last_calculated_beat = beat;
 
-        // for _ in 0..((beat * 10. % (16. * 10.)) as usize){
-        //     print!("#");
-        // }
-        // println!();
+
 
         // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
         // Or maybe not, rather it looks like:
@@ -493,50 +605,10 @@ impl BeatKeeper {
             beat = 0.0;
         }
 
-
-        for module in &mut self.running_modules {
-            module.beat_update(beat);
-            module.time_update(td.sample_position as f32 / 44100.);
-            if bpm_changed {
-                module.bpm_changed(self.bpm.value);
-            }
-            if original_bpm_changed {
-                module.original_bpm_changed(self.last_original_bpm);
-            }
-
-            if playback_speed_changed{
-                module.playback_speed_changed(td.playback_speed);
-            }
-        }
-
-
-        let mut masterdeck_track_changed = false;
-
-        if slow_update{
-            for (i, track) in rb.get_track_infos()?.iter().enumerate(){
-                if self.tracks[i].set(track.clone()){
-                    for module in &mut self.running_modules {
-                        module.track_changed(track.clone(), i);
-                    }
-                    masterdeck_track_changed |= self.masterdeck_index.value == i;
-                }
-            }
-            for module in &mut self.running_modules{
-                module.slow_update();
-            }
-        }
-
-        if masterdeck_index_changed || masterdeck_track_changed {
-            let track = &self.tracks[self.masterdeck_index.value].value;
-            self.logger.debug(&format!("Master track changed: {track:?}"));
-            for module in &mut self.running_modules {
-                module.master_track_changed(track);
-            }
-
-        }
-
-        Ok(())
+        Ok(TrackTrackerResult {
+            beat,
+            original_bpm,
+            timing_data_raw: td,
+        })
     }
-
 }
-
