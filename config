@@ -6,7 +6,7 @@ app.debug false
 app.repo grufkork/rkbx_link/rewrite
 
 # Rekordbox version to target
-keeper.rekordbox_version 7.0.8
+keeper.rekordbox_version 7.1.2
 # How often to fetch song position in Hz
 keeper.update_rate 120
 # Every nth update, perform a slow update
@@ -17,7 +17,7 @@ keeper.delay_compensation 0
 # Number of updates to ignore bar-sized jitter for
 keeper.bar_jitter_tolerance 10
 keeper.keep_warm true
-keeper.decks 2
+keeper.decks 4
 
 
 

@@ -386,9 +386,8 @@ impl BeatKeeper {
         }
 
         let mut tracker_data = None;
-        let trackers = &mut self.track_trackers;
 
-        for (i, tracker) in trackers[0..self.decks].iter_mut().enumerate() {
+        for (i, tracker) in self.track_trackers[0..self.decks].iter_mut().enumerate() {
         // for (i, tracker) in trackers.iter_mut().enumerate() {
             if i == self.masterdeck_index.value{
                 tracker_data = Some(tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta)?);
@@ -398,10 +397,10 @@ impl BeatKeeper {
         }
 
         if let Some(tracker_data) = tracker_data {
-            for _ in 0..((tracker_data.beat * 10. % (16. * 10.)) as usize){
-                print!("#");
-            }
-            println!();
+            // for _ in 0..((tracker_data.beat * 10. % (16. * 10.)) as usize){
+            //     print!("#");
+            // }
+            // println!();
             // println!("{}", tracker_data.beat);
             for module in &mut self.running_modules {
                 module.beat_update(tracker_data.beat);
@@ -432,6 +431,7 @@ impl BeatKeeper {
                     for module in &mut self.running_modules {
                         module.track_changed(track.clone(), i);
                     }
+                    self.track_trackers[i].track_changed = true;
                     masterdeck_track_changed |= self.masterdeck_index.value == i;
                 }
             }
@@ -548,7 +548,7 @@ impl TrackTracker {
             // Subtract half of the time advancment, as that's the expected value.
             let shift = td.sample_position - posdiff/2 - ((td.beat - 1)as f32 * 44100. * spb) as i64;
             self.new_bar_measurements.push_back(shift);
-            if self.new_bar_measurements.len() > 10{
+            if self.new_bar_measurements.len() > 8{ // Number of new beats measurements to average
                 self.new_bar_measurements.pop_front();
             }
 
