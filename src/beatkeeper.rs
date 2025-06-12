@@ -315,7 +315,7 @@ impl BeatKeeper {
                     
                     rekordbox = None;
                     logger.err("Connection to Rekordbox lost");
-                    thread::sleep(Duration::from_secs(1));
+                    // thread::sleep(Duration::from_secs(3));
                     logger.info("Reconnecting...");
 
                 }else{
@@ -382,17 +382,26 @@ impl BeatKeeper {
         // let masterdeck_index_changed = self.masterdeck_index.set(td.masterdeck_index as usize);
         let masterdeck_index_changed = self.masterdeck_index.set(rb.read_masterdeck_index()?);
         if self.masterdeck_index.value >= rb.deckcount {
-            self.masterdeck_index.value = 0;
+            return Ok(()); // No master deck selected - rekordbox is not initialised
         }
 
         let mut tracker_data = None;
 
         for (i, tracker) in self.track_trackers[0..self.decks].iter_mut().enumerate() {
-        // for (i, tracker) in trackers.iter_mut().enumerate() {
-            if i == self.masterdeck_index.value{
-                tracker_data = Some(tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta)?);
-            }else if self.keep_warm {
-                tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta)?;
+            // for (i, tracker) in trackers.iter_mut().enumerate() {
+            if i == self.masterdeck_index.value || self.keep_warm{
+                let res = tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta);
+
+                if i == self.masterdeck_index.value{
+                    match res {
+                        Ok(res) => {
+                            tracker_data = Some(res);
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        },
+                    }
+                }
             }
         }
 
@@ -450,165 +459,168 @@ impl BeatKeeper {
         }
 
         Ok(())
+        }
+
     }
 
-}
-
-struct TrackTrackerResult {
-    beat: f32,
-    original_bpm: f32,
-    timing_data_raw: TimingDataRaw,
-}
-
-struct TrackTracker{
-    last_original_bpm: f32,
-    time_since_bpm_change: Duration,
-    last_beat: ChangeTrackedValue<i32>, // Last beat read from GUI
-    last_pos: i64,
-    grid_shift: i64,
-    new_bar_measurements: VecDeque<i64>,
-    measurements_since_bar_jump: i32, // Loops since a bar-sized jump in beat was detected
-    last_calculated_beat: f32, // Previous total calculated beat
-    track_changed: bool, // External flag to indicate that the track has changed
-}
-
-impl TrackTracker {
-    fn new() -> Self {
-        Self {
-            last_original_bpm: 120.,
-            time_since_bpm_change: Duration::from_secs(0),
-            last_beat: ChangeTrackedValue::new(1),
-            last_pos: 0,
-            grid_shift: 0,
-            new_bar_measurements: VecDeque::new(),
-            measurements_since_bar_jump: 0,
-            last_calculated_beat: 0.0,
-            track_changed: false,
-        }
+    struct TrackTrackerResult {
+        beat: f32,
+        original_bpm: f32,
+        timing_data_raw: TimingDataRaw,
     }
 
-    fn update(&mut self, rb: &Rekordbox, bar_jitter_tolerance: i32, offset_samples: i64, deck: usize, delta: Duration) -> Result<TrackTrackerResult, ReadError>{
-        let td = rb.read_timing_data(deck)?;
-
-
-
-        let original_bpm = td.current_bpm / td.playback_speed;
-        let original_bpm_diff = original_bpm - self.last_original_bpm;
-
-
-        // --- Update original BPM
-        let mut original_bpm_changed = false;
-
-        if original_bpm_diff.abs() > 0.001{
-            // There's a delay between the value of the playback speed changing and the displayed BPM
-            // changing, usually <0.1s. 
-            if self.time_since_bpm_change.as_secs_f32() > 0.2 {
-                self.last_original_bpm = original_bpm;
-                original_bpm_changed = true;
-            }
-            self.time_since_bpm_change += delta;
-        }else{
-            self.time_since_bpm_change = Duration::from_secs(0);
-        }
-
-        // This flag is required, because if the tempo changes the grid shift must be recalculated
-        // in the new BPM. Otherwise the grid shift assumes the previous tempo, while
-        // seconds_since_last_measure is calculated in the new tempo causing a jump until it is
-        // actually recalculated.
-        let mut calculate_grid_shift = false;
-
-        // --- Find grid offset
-        // Clear the queue if the beat grid has changed, such as if:
-        // - The master track has been changed
-        // - The original BPM has been changed due to dynamic beat analysis or manual adjustment
-        if original_bpm_changed {
-            // Keep the latest measurement since it is still valid
-            while self.new_bar_measurements.len() > 1{
-                self.new_bar_measurements.pop_front();
-            }
-            calculate_grid_shift = true;
-        }
-        if self.track_changed {
-            self.new_bar_measurements.clear();
-            self.track_changed = false;
-        }
-
-        let bps = self.last_original_bpm / 60.;
-        let spb = 1. / bps;
-        let samples_per_measure = (44100. * spb) as i64 * 4; // TODO: This can be zero, leading to division by zero errors when moduloing
-
-        // How much playback position should have advanced since previous loop
-        let expected_posdiff = (delta.as_micros() as f32 / 1_000_000. * 44100. * td.playback_speed) as i64;
-        let posdiff = td.sample_position - self.last_pos;
-        self.last_pos = td.sample_position;
-        let expectation_error = (expected_posdiff - posdiff) as f32/expected_posdiff as f32;
-
-        // If there's a new beat, playback has advanced forward and playback position advancement is not greater than +/- 50% of expected value
-        if self.last_beat.set(td.beat) && posdiff > 0 && expectation_error.abs() < 0.5{
-            // Subtract half of the time advancment, as that's the expected value.
-            let shift = td.sample_position - posdiff/2 - ((td.beat - 1)as f32 * 44100. * spb) as i64;
-            self.new_bar_measurements.push_back(shift);
-            if self.new_bar_measurements.len() > 8{ // Number of new beats measurements to average
-                self.new_bar_measurements.pop_front();
-            }
-
-            calculate_grid_shift = true;
-        }
-
-        if calculate_grid_shift && !self.new_bar_measurements.is_empty(){
-            // To avoid the seam problem when moduloing the values, center all measurements with
-            // the assumption that the first value is good enough (should be +/- 1/update rate wrong)
-            // This means that the queue must be cleared at any discontinuity in original BPM and
-            // that any erroneous measurements must be filtered by looking at the change in playback
-            // position
-            let phase_shift_guess = samples_per_measure / 2 - self.new_bar_measurements.front().unwrap() % samples_per_measure;
-            self.grid_shift = self.new_bar_measurements.iter().map(|x| (x + phase_shift_guess) % samples_per_measure).sum::<i64>() / self.new_bar_measurements.len() as i64 - phase_shift_guess;
-        }
-
-
-
-        // Sample position seems to always be counted as if the track is 44100Hz
-        // - even when track or audio interface is 48kHz
-        let seconds_since_new_measure = (td.sample_position - self.grid_shift + offset_samples) as f32 / 44100.;
-        let subdivision = 4.;
-
-        // println!("{}", td.bar);
-        // println!("{}", (seconds_since_new_measure % (subdivision * spb)) * bps);
-
-        let mut beat = ((seconds_since_new_measure) % (subdivision * spb)) * bps + (td.bar - (td.bar > 0) as i32)  as f32 * subdivision; 
-
-        // The GUI does not update as frequently as the playback position. This means that reading
-        // the bar offset from the GUI will not be accurate - it might change both before or after
-        // the bar actually changes. If not accounted for, this means that for a split second
-        // around the bar change the beat might jump 4 beats in either direction.
-        // This might however trigger false positives for 1-bar loops/jumps, so we only ignore the
-        // jump for a little while.
-        let beat_diff = beat - self.last_calculated_beat;
-        if (beat_diff.abs() - 4.0).abs() < 0.1{
-            self.measurements_since_bar_jump += 1;
-            if self.measurements_since_bar_jump < bar_jitter_tolerance{
-                beat -= beat_diff.signum() * 4.0;
-            }
-        }else{
-            self.measurements_since_bar_jump = 0;
-        }
-        self.last_calculated_beat = beat;
-
-
-
-        // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
-        // Or maybe not, rather it looks like:
-        // Unadjusted tracks have bar 1 = 0, adjusted tracks have bar 1 = 1
-        // So unadjusted tracks have a lowest possible beat shift of 0, adjusted have 1
-
-        if beat.is_nan(){
-            beat = 0.0;
-        }
-
-        Ok(TrackTrackerResult {
-            beat,
-            original_bpm,
-            timing_data_raw: td,
-        })
+    struct TrackTracker{
+        last_original_bpm: f32,
+        time_since_bpm_change: Duration,
+        last_beat: ChangeTrackedValue<i32>, // Last beat read from GUI
+        last_pos: i64,
+        grid_shift: i64,
+        new_bar_measurements: VecDeque<i64>,
+        measurements_since_bar_jump: i32, // Loops since a bar-sized jump in beat was detected
+        last_calculated_beat: f32, // Previous total calculated beat
+        track_changed: bool, // External flag to indicate that the track has changed
     }
-}
+
+    impl TrackTracker {
+        fn new() -> Self {
+            Self {
+                last_original_bpm: 120.,
+                time_since_bpm_change: Duration::from_secs(0),
+                last_beat: ChangeTrackedValue::new(1),
+                last_pos: 0,
+                grid_shift: 0,
+                new_bar_measurements: VecDeque::new(),
+                measurements_since_bar_jump: 0,
+                last_calculated_beat: 0.0,
+                track_changed: false,
+            }
+        }
+
+        fn update(&mut self, rb: &Rekordbox, bar_jitter_tolerance: i32, offset_samples: i64, deck: usize, delta: Duration) -> Result<TrackTrackerResult, ReadError>{
+            let mut td = rb.read_timing_data(deck)?;
+            if td.current_bpm == 0.0{
+                td.current_bpm = 120.0;
+            }
+
+
+
+            let original_bpm = td.current_bpm / td.playback_speed;
+            let original_bpm_diff = original_bpm - self.last_original_bpm;
+
+
+            // --- Update original BPM
+            let mut original_bpm_changed = false;
+
+            if original_bpm_diff.abs() > 0.001{
+                // There's a delay between the value of the playback speed changing and the displayed BPM
+                // changing, usually <0.1s. 
+                if self.time_since_bpm_change.as_secs_f32() > 0.2 {
+                    self.last_original_bpm = original_bpm;
+                    original_bpm_changed = true;
+                }
+                self.time_since_bpm_change += delta;
+            }else{
+                self.time_since_bpm_change = Duration::from_secs(0);
+            }
+
+            // This flag is required, because if the tempo changes the grid shift must be recalculated
+            // in the new BPM. Otherwise the grid shift assumes the previous tempo, while
+            // seconds_since_last_measure is calculated in the new tempo causing a jump until it is
+            // actually recalculated.
+            let mut calculate_grid_shift = false;
+
+            // --- Find grid offset
+            // Clear the queue if the beat grid has changed, such as if:
+            // - The master track has been changed
+            // - The original BPM has been changed due to dynamic beat analysis or manual adjustment
+            if original_bpm_changed {
+                // Keep the latest measurement since it is still valid
+                while self.new_bar_measurements.len() > 1{
+                    self.new_bar_measurements.pop_front();
+                }
+                calculate_grid_shift = true;
+            }
+            if self.track_changed {
+                self.new_bar_measurements.clear();
+                self.track_changed = false;
+            }
+
+            let bps = self.last_original_bpm / 60.;
+            let spb = 1. / bps;
+            let samples_per_measure = (44100. * spb) as i64 * 4; // TODO: This can be zero, leading to division by zero errors when moduloing
+
+            // How much playback position should have advanced since previous loop
+            let expected_posdiff = (delta.as_micros() as f32 / 1_000_000. * 44100. * td.playback_speed) as i64;
+            let posdiff = td.sample_position - self.last_pos;
+            self.last_pos = td.sample_position;
+            let expectation_error = (expected_posdiff - posdiff) as f32/expected_posdiff as f32;
+
+            // If there's a new beat, playback has advanced forward and playback position advancement is not greater than +/- 50% of expected value
+            if self.last_beat.set(td.beat) && posdiff > 0 && expectation_error.abs() < 0.5{
+                // Subtract half of the time advancment, as that's the expected value.
+                let shift = td.sample_position - posdiff/2 - ((td.beat - 1)as f32 * 44100. * spb) as i64;
+                self.new_bar_measurements.push_back(shift);
+                if self.new_bar_measurements.len() > 8{ // Number of new beats measurements to average
+                    self.new_bar_measurements.pop_front();
+                }
+
+                calculate_grid_shift = true;
+            }
+
+            if calculate_grid_shift && !self.new_bar_measurements.is_empty(){
+                // To avoid the seam problem when moduloing the values, center all measurements with
+                // the assumption that the first value is good enough (should be +/- 1/update rate wrong)
+                // This means that the queue must be cleared at any discontinuity in original BPM and
+                // that any erroneous measurements must be filtered by looking at the change in playback
+                // position
+                let phase_shift_guess = samples_per_measure / 2 - self.new_bar_measurements.front().unwrap() % samples_per_measure;
+                self.grid_shift = self.new_bar_measurements.iter().map(|x| (x + phase_shift_guess) % samples_per_measure).sum::<i64>() / self.new_bar_measurements.len() as i64 - phase_shift_guess;
+            }
+
+
+
+            // Sample position seems to always be counted as if the track is 44100Hz
+            // - even when track or audio interface is 48kHz
+            let seconds_since_new_measure = (td.sample_position - self.grid_shift + offset_samples) as f32 / 44100.;
+            let subdivision = 4.;
+
+            // println!("{}", td.bar);
+            // println!("{}", (seconds_since_new_measure % (subdivision * spb)) * bps);
+
+            let mut beat = ((seconds_since_new_measure) % (subdivision * spb)) * bps + (td.bar - (td.bar > 0) as i32)  as f32 * subdivision; 
+
+            // The GUI does not update as frequently as the playback position. This means that reading
+            // the bar offset from the GUI will not be accurate - it might change both before or after
+            // the bar actually changes. If not accounted for, this means that for a split second
+            // around the bar change the beat might jump 4 beats in either direction.
+            // This might however trigger false positives for 1-bar loops/jumps, so we only ignore the
+            // jump for a little while.
+            let beat_diff = beat - self.last_calculated_beat;
+            if (beat_diff.abs() - 4.0).abs() < 0.1{
+                self.measurements_since_bar_jump += 1;
+                if self.measurements_since_bar_jump < bar_jitter_tolerance{
+                    beat -= beat_diff.signum() * 4.0;
+                }
+            }else{
+                self.measurements_since_bar_jump = 0;
+            }
+            self.last_calculated_beat = beat;
+
+
+
+            // Unadjusted tracks have shift = 0. Adjusted tracks that begin on the first beat, have shift = 1
+            // Or maybe not, rather it looks like:
+            // Unadjusted tracks have bar 1 = 0, adjusted tracks have bar 1 = 1
+            // So unadjusted tracks have a lowest possible beat shift of 0, adjusted have 1
+
+            if beat.is_nan(){
+                beat = 0.0;
+            }
+
+            Ok(TrackTrackerResult {
+                beat,
+                original_bpm,
+                timing_data_raw: td,
+            })
+        }
+    }
