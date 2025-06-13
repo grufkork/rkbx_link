@@ -96,9 +96,12 @@ fn main() {
 fn update_routine(repo: &str, logger: ScopedLogger){
     logger.info("Checking for updates...");
     // Exe update
-    let Ok(new_exe_version) = get_file("version_exe", repo) else {
-        logger.err("Failed to fetch new executable version from repository");
-        return;
+    let new_exe_version = match get_file("version_exe", repo) {
+        Ok(version) => version,
+        Err(e) => {
+            logger.err(&format!("Failed to fetch new executable version from repository: {e}"));
+            return;
+        }
     };
     let new_exe_version = new_exe_version.trim();
 
