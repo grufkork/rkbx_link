@@ -58,10 +58,10 @@ impl OutputModule for Osc {
     }
 
     fn beat_update(&mut self, beat: f32){
-        self.send_float("/beat/0", beat);
+        self.send_float("/beat", beat);
         self.send_float("/beat/1", beat % 1.);
-        self.send_float("/beat/2", beat % 2.);
-        self.send_float("/beat/4", beat % 4.);
+        self.send_float("/beat/2", (beat % 2.) / 2.);
+        self.send_float("/beat/4", (beat % 4.) / 4.);
     }
 
     fn time_update(&mut self, time: f32){

@@ -1,91 +1,101 @@
-# Rekordbox OSC
-Ableton Link & OSC support for Rekordbox, to connect to visualisers and music software
+# rkbx_link for Rekordbox
+rkbx_link exports rock-solid timing information to sync live lights and music to your DJ sets in Rekordbox. It reads transport position and beatgrid directly from memory, resulting in highly accurate low-latency data. This data can be sent using Ableton Link or OSC. The program also extracts the name and artist of the currently playing track.
 
-# ⚠️  Expect a major update soon™!
-I'm looking to rewrite parts of the program to allow for easier and non-breaking updates of both offsets the executable itself, together with a notification system for when updates are available. Also, since RB v7 it seems the syncing is significantly more jittery. I will have to investigate this closer, and will probably fix that together with the ease of use update.
-
-If this software is of use for you, consider donating at my [ko-fi](https://ko-fi.com/grufkork) so I can spend more time on it. Keeping up with AlphaTheta (formerly Pioneer)'s continous lapse of judgement takes time and effort.
+With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.1.2. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially, consider donating at my [ko-fi](https://ko-fi.com/grufkork).
 
 ## What does it do?
-When run on the same computer as an instance of Rekordbox, it will read the current timing information and send this over your protocol of choice. By default it outputs a 4-beat aligned signal using Ableton Link, but it can also transmit equivalent data over OSC, although with less accurate timing. 
+When run on the same computer as an instance of Rekordbox, the program reads the current timing data and sends this over your protocol of choice. By default it outputs a 4-beat aligned Ableton Link session, but it can also transmit equivalent data over OSC.
 
-The program does not interact with the audio stream in any way, but reads the onscreen text values through memory. It is therefore extremely accurate, although your beatgrid must be correct for it to work as expected.
+The program does not interact with the audio stream in any way, but reads values through memory. It is therefore extremely accurate, although your beatgrid must be correct for it to work as expected.
 
 ## Why?
 Rekordbox's Ableton Link integration only allows for receiving a signal, not extracting it.
 
 ## Usage
-`rkbx_osc.exe [flags]`
-where
-``` 
- -h  Print help and available versions
- -u  Fetch latest offset list from GitHub and exit
- -v  Rekordbox version to target, eg. 6.7.3
+Edit the `config` file to your liking, then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. When starting it will print all available Rekordbox versions.
 
--- OSC --
- -o  Enable OSC
- -s  Source address, eg. 127.0.0.1:1337
- -t  Target address, eg. 192.168.1.56:6667
-```
-If no arguments are given, it defaults to the latest supported rekordbox version and Ableton Link. If OSC is enabled, it will send to 127.0.0.1:6669. As messages are sent with UDP, source address should not need to be set.
+# Configuration and output modules
+Listed below are all available modules and how to configure them. You enable and disable them in the `config` file.
+
+### app.license <string>
+Enter your license key here to get support for the latest Rekordbox versions. Otherwise leave it empty.
+
+### app.auto_update <true/false>
+Enables checking for updates on startup if you have a valid [license](https://3gg.se/products/rkbx_link). 
+
+### app.repo <string>
+
+## Keeper (settings for beat tracking)
+### keeper.rekordbox_version <string>
+Enter the version of Rekordbox to target (eg. 6.8.5 or 7.1.3). You can see available versions on this page or when starting the program. 
+
+### keeper.update_rate <int>
+Number of updates per second to send. Default is 120, which results in about 60 updates per second due to Windows' sleep granularity. You can set this lower if you want to save CPU usage, but it will result in less accurate timing.
+
+### keeper.slow_update_every_nth <int>
+How often to read additional data from Rekordbox. Saves a bit of CPU usage if increased, but will not really affect worst-case performance. Default is `10`, meaning every 10th update will read the current track name and artist.
+
+### keeper.delay_compensation <float>
+Time in milliseconds to shift the output, can be both negative and positive. Used to compensate for latency in audio, network, lights etc.
+
+### keeper.bar_jitter_tolerance <int>
+Due to some technicalities with how values are read, dead reckoning is used to smooth out 4-beat sized jitter. After this number of updates, the jitter is no longer considered jitter and the new position is considered the correct value. Default is 10.
+
+### keeper.keep_warm <true/false>
+Enabling this means all decks are tracked even when not active. Enabling this increases CPU usage a bit, but means that when you switch decks the new one will already be warmed up and ready to go. Default is `true`.
+
+### keeper.decks <int>
+Number of decks to track, 1 to 4.
+
+## Open Sound Control (OSC)
+Outputs transport and more data over OSC. Check below for all addresses.
+### osc.enabled <true/false>
+Whether to enable OSC output.
+
+### osc.source <IP address>
+Local address to bind to. Default is 127.0.0.1:4450
+
+### osc.destination <IP address>
+Address to send OSC messages to. Default is 127.0.0.1:4460
+
+## Ableton Link
+### link.enabled <true/false>
+Whether to enable Ableton Link output.
+
+### link.cumulative_error_tolerance <float>
+Cumulative error in beats allowed before a resync is triggered. Default is 0.05. Lower or set to zero if you really want it to track when you scratch, otherwise leave as is to save a bit of CPU and network (and to be nicer to other peers).
+
+## Track to file
+### file.enabled <true/false>
+Whether to write the current master track to a file. Title, artist and album are written to separate lines.
+
+### file.filename <string>
+Filename to write the current track to. Default is `current_track.txt` in the same directory as the executable.
+
+## Setlist to file
+This module logs the current master track to a setlist file together with when it was played relative to setlist start. The first line in the file contains the setlist start time in Unix time. On startup, if there already is a setlist file, it will continue appending to it with timestamps relative to the creation of the setlist.
+
+### setlist.enabled <true/false>
+Whether to enable setlist output.
+
+### setlist.separator <string>
+Separator to use between title and artist in the setlist file. Default is `-`.
+
+### setlist.filename <string>
+Where to write the setlist file. Default is `setlist.txt` in the same directory as the executable.
 
 ## OSC Addresses
- - `/beat`: the current beat fraction, as a float counting from 0 to 1
- - `/bpm`: the master deck tempo in BPM
+ - `/bpm/current` (float) Current BPM of the master deck
+ - `/bpm/original` (float) Original (non-pitched) BPM of the master deck
+ - `/beat` (float) Total beat / number of beats since beat 1.1
+ - `/beat/[1|2|4]` (float) Normalised values 0-1 looping with 1, 2 or 4 beat intervals.
+ - `/time` (float) Current track position in seconds
+ - `/playback_speed` (float) Current playback speed/pitch, 1.0 for normal speed, 2.0 for double speed etc.
+ - `/track/[1|2|3|4|master]/[title|artist|album]` (string) Title/artist/album of the current track on deck 1, 2, 3 or 4, or the master deck.
 
 ## Supported versions
-~~Any version not listed will 99% not work, but you can always try using an adjacent version.~~
-As of 7.0.1 the offsets do not seem to change. I hope it continues this way.
 
 | Rekordbox Version  |
 | ----- |
-| `7.0.3`, `7.0.2`, `7.0.1`, `7.0.0` |
-| `6.8.5`, `6.8.4`, `6.8.3`, `6.8.2`, `6.7.7`, `6.7.4`, `6.7.3` |
-
-## How it works
-The timing information is extracted through reading Rekordbox's memory. The program reads the current beat and measure from the text display on top of the large waveform, and detects when these change.
-When a change occurs, the beat fraction is set to 0 and then counts linearly upwards at a pace dictated by the master track BPM.
-
-## Limitations
-- Only supports two decks.
-- Might register an extra beat when switching master deck.
-- Assumes 4/4 time signature - Rekordbox does not support anything else without manually editing the database
-- Windows only
-
-# Technical Details
-
-## Offsets file format
-The `offsets` file contain the hex memory addresses (without the leading 0x) for the values we need to fetch. The file supports basic comments (# at start of line). Versions are separated by two newlines.
-
-Example entry with explanations:
-```
-7.0.0                   Rerkordbox Version
-052EA410 28 0 48 2468   Deck 1 Bar
-052EA410 28 0 48 246C   Deck 1 Beat
-052EA410 28 0 50 2468   Deck 2 Bar
-052EA410 28 0 50 246C   Deck 2 Beat
-0544A460 28 180 0 140   Masterdeck BPM
-052413A8 20 278 124     Masterdeck index
-```
-
-## Updating
-Previously, every Rekordbox update the memory offsets changed. From 7.0.0 -> 7.0.1 the old offsets continued working. 
-When the pointers change, I use Cheat Engine, using pointerscans and trying to find the shortest pointer paths.
-
-Easiest method seems to be to find each value, pointerscan, save that, then reopen rekordbox and filter the pointerscans by value. If you can't find any values, try increasing the maximum offset value to something like 32768, offsets = 16. To save performance you can set max level to 5 or 6, paths should not be longer than that.
-
-Updates are welcome, put them in the `offsets` file.
-
-### `master_bpm`
-The BPM value of the current master track. Find by loading a track on deck 1 & 2, then search for a float containing the BPM of the deck currently set as Master. Find a value that matches exactly and make sure it doesn't oscillate when you play on that deck.
-
-### `masterdeck_index`
-The index of the deck currently set as Master. 0 for deck 1, 1 for deck 2. Not sure if the value I've found is the index of the selected deck, or a boolean dictating if Deck 2 is master. Search for a byte.
-
-This one is usually the trickiest. There are a couple of other values wich correlate but actually change on hover etc., so be careful. The path should not be longer than 4 addresses, so find a bunch of candidates (should be able to reduce to <30) and then pointer scan for each until you get a short one - that should be it.
-
-### `deck1, deck2, bar, beat`
-On the waveform view, these are the values "xx.x" showing the current bar and beat. The second to last value in the offset chain is the same per deck, and the last is the same per beat/bar. Thus, if you find Deck1 Bar and Deck2 Beat, you can calculate Deck1 Beat and Deck2 Bar.
-
-## Notes on timing
-Windows, by default, only has sleeps in increments of ~16ms. As such, the the sending frequency is a bit uneven. The rate is set to 120Hz in the code, but that results in about 60Hz update rate. I'm not sure if the method measuring the delta time is accurate enough, or 
+| `7.1.2`, `7.1.3` |
+| `6.8.5` |
