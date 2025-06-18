@@ -61,8 +61,11 @@ pub struct Rekordbox {
     beat2_val: Value<i32>,
     masterdeck_index_val: Value<u8>,
 
+    pub bars1: i32,
+    pub bars2: i32,
     pub beats1: i32,
     pub beats2: i32,
+    pub master_bars: i32,
     pub master_beats: i32,
     pub master_bpm: f32,
     pub masterdeck_index: u8,
@@ -94,35 +97,49 @@ impl Rekordbox {
 
             masterdeck_index_val,
 
+            bars1: -1,
+            bars2: -1,
             beats1: -1,
             beats2: -1,
             master_bpm: 120.0,
             masterdeck_index: 0,
+            master_bars: 0,
             master_beats: 0,
         }
     }
 
     fn update(&mut self) {
         self.master_bpm = self.master_bpm_val.read();
+        self.bars1 = self.bar1_val.read();
+        self.bars2 = self.bar2_val.read();
         self.beats1 = self.bar1_val.read() * 4 + self.beat1_val.read();
         self.beats2 = self.bar2_val.read() * 4 + self.beat2_val.read();
         self.masterdeck_index = self.masterdeck_index_val.read();
+        
+        self.master_bars = if self.masterdeck_index == 0 {
+            self.bars1
+        } else {
+            self.beats2
+        };
 
         self.master_beats = if self.masterdeck_index == 0 {
             self.beats1
         } else {
             self.beats2
         };
+        
     }
 }
 
 pub struct BeatKeeper {
     rb: Option<Rekordbox>,
+    last_bar: i32,
     last_beat: i32,
     pub beat_fraction: f32,
     pub last_masterdeck_index: u8,
     pub offset_micros: f32,
     pub last_bpm: f32,
+    pub new_bar: bool,
     pub new_beat: bool,
 }
 
@@ -130,11 +147,13 @@ impl BeatKeeper {
     pub fn new(offsets: RekordboxOffsets) -> Self {
         BeatKeeper {
             rb: Some(Rekordbox::new(offsets)),
+            last_bar: 0,
             last_beat: 0,
             beat_fraction: 1.,
             last_masterdeck_index: 0,
             offset_micros: 0.,
             last_bpm: 0.,
+            new_bar: false,
             new_beat: false,
         }
     }
@@ -142,11 +161,13 @@ impl BeatKeeper {
     pub fn dummy() -> Self {
         BeatKeeper {
             rb: None,
+            last_bar: 0,
             last_beat: 0,
             beat_fraction: 1.,
             last_masterdeck_index: 0,
             offset_micros: 0.,
             last_bpm: 0.,
+            new_bar: false,
             new_beat: false,
         }
     }
@@ -160,6 +181,11 @@ impl BeatKeeper {
             if rb.masterdeck_index != self.last_masterdeck_index {
                 self.last_masterdeck_index = rb.masterdeck_index;
                 self.last_beat = rb.master_beats;
+            }
+
+            if (rb.master_bars - self.last_bar).abs() > 0 {
+                self.last_bar = rb.master_bars;
+                self.new_bar = true;
             }
 
             if (rb.master_beats - self.last_beat).abs() > 0 {
@@ -194,6 +220,8 @@ impl BeatKeeper {
         }
         None
     }
+
+    pub fn get_last_bar(&mut self) -> i32 {self.last_bar}
 
     pub fn get_new_beat(&mut self) -> bool {
         if self.new_beat {
@@ -366,11 +394,21 @@ Available versions:",
         keeper.update(delta); // Get values, advance time
 
         let bfrac = keeper.get_beat_faction();
+        let lbar: i32 = keeper.get_last_bar();
 
         if let Some(socket) = &socket {
             let msg = OscPacket::Message(OscMessage {
                 addr: "/beat".to_string(),
                 args: vec![OscType::Float(bfrac)],
+            });
+            let packet = encode(&msg).unwrap();
+            socket.send(&packet[..]).unwrap();
+        }
+
+        if let Some(socket) = &socket {
+            let msg = OscPacket::Message(OscMessage {
+                addr: "/bar".to_string(),
+                args: vec![OscType::Int(lbar)],
             });
             let packet = encode(&msg).unwrap();
             socket.send(&packet[..]).unwrap();
