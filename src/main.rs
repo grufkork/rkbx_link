@@ -21,12 +21,17 @@ const LICENSE_SERVER: &str = "localhost:4000";
 #[cfg(not(feature = "dev"))]
 const LICENSE_SERVER: &str = "3gg.se:4000";
 
+#[cfg(feature = "dev")]
+const REPO: &str = "grufkork/rkbx_link/rewrite";
+#[cfg(not(feature = "dev"))]
+const REPO: &str = "grufkork/rkbx_link";
+
 fn main() {
     println!();
     println!("=====================");
     println!("Rekordbox Link v{VERSION}");
-    println!("Repo     https://github.com/grufkork/rkbx_link");
-    println!("Updates  [BUY/DOWNLOAD LINK HERE]");
+    println!("Repo and docs            https://github.com/grufkork/rkbx_link");
+    println!("Updates/buy a license    https://3gg.se/products/rkbx_link");
     println!("Missing a feature? Spotted a bug? Just shoot me a message!");
     println!("=====================");
     println!();
@@ -68,7 +73,7 @@ fn main() {
 
     if update{
         let license = config.get_or_default::<String>("app.licensekey", "evaluation".to_string());
-        update_routine(&license, &config.get_or_default::<String>("app.repo", "grufkork/rkbx_link".to_string()), ScopedLogger::new(&logger, "Update"));
+        update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"));
     }
 
     let Ok(offsets) = RekordboxOffsets::from_file("./data/offsets", ScopedLogger::new(&logger, "Parser")) else {
@@ -130,6 +135,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
         logger.warn(" ");
         logger.warn(&format!("   !! An executable update available is available: v{new_exe_version} !!"));
         logger.warn("Update the program to get the latest offset updates");
+        logger.warn("https://github.com/grufkork/rkbx_link/releases/latest");
         logger.warn("");
         return;
     }
@@ -175,12 +181,15 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
     if update_offsets && y_n("Update offsets?"){
         // Offset update available
         logger.info("Downloading offsets...");
-        if let Ok(offsets) = get_git_file_http("offsets", repo) {
-            std::fs::write("./data/offsets", offsets).unwrap();
-            std::fs::write("./data/version_offsets", new_offset_version.to_string()).unwrap();
-            logger.good("Offsets updated");
-        }else{
-            logger.err("Failed to fetch offsets from repository");
+        match get_licensed_file("offsets", license, &logger) {
+            Ok(offsets) =>{
+                std::fs::write("./data/offsets", offsets).unwrap();
+                std::fs::write("./data/version_offsets", new_offset_version.to_string()).unwrap();
+                logger.good("Offsets updated");
+            },
+            Err(e) => {
+                logger.err(&format!("Failed to fetch offsets from server: {e}"));
+            }
         }
     }
 }
