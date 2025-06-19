@@ -1,87 +1,96 @@
-# rkbx_link for Rekordbox
-rkbx_link exports rock-solid timing information to sync live lights and music to your DJ sets in Rekordbox. It reads transport position and beatgrid directly from memory, resulting in highly accurate low-latency data. This data can be sent using Ableton Link or OSC. The program also extracts the name and artist of the currently playing track.
+[More info/Buy](https://3gg.se/products/rkbx_link) | [Buy a License](https://store.3gg.se/)
 
-With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.1.2. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially, consider donating at my [ko-fi](https://ko-fi.com/grufkork).
+# rkbx_link for Rekordbox
+Export rock-solid timing information to sync live lights and music to your DJ sets in Rekordbox! With support for Ableton Link, OSC, setlist generation and more. rkbx_link provides highly accurate low-latency data by reading transport position and beatgrid directly from memory.
+
+With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.1.3. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially making loads of dosh, consider extra support on my [ko-fi](https://ko-fi.com/grufkork).
+
+## Usage
+Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file to your liking, then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. During startup all available Rekordbox versions are printed.
+
+## Supported versions
+
+| Rekordbox Version  |
+| ----- |
+| `7.1.2`, `7.1.3` |
+| `6.8.5` |
+
+![logo](https://3gg.se/products/rkbx_link/logo.png "Logo")
 
 ## What does it do?
 When run on the same computer as an instance of Rekordbox, the program reads the current timing data and sends this over your protocol of choice. By default it outputs a 4-beat aligned Ableton Link session, but it can also transmit equivalent data over OSC.
 
-The program does not interact with the audio stream in any way, but reads values through memory. It is therefore extremely accurate, although your beatgrid must be correct for it to work as expected.
+The program does not interact with the audio stream in any way, but reads values through memory. It is therefore extremely accurate (provided your beatgrids are correct!)
 
 ## Why?
-Rekordbox's Ableton Link integration only allows for receiving a signal, not extracting it.
-
-## Usage
-Edit the `config` file to your liking, then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. When starting it will print all available Rekordbox versions.
+Rekordbox's Ableton Link integration only allows for receiving a signal, not extracting it. 
 
 # Configuration and output modules
 Listed below are all available modules and how to configure them. You enable and disable them in the `config` file.
 
-### app.license <string>
+- `app.license <string>`
 Enter your license key here to get support for the latest Rekordbox versions. Otherwise leave it empty.
 
-### app.auto_update <true/false>
+- `app.auto_update <true/false>`
 Enables checking for updates on startup if you have a valid [license](https://3gg.se/products/rkbx_link). 
 
-### app.repo <string>
-
 ## Keeper (settings for beat tracking)
-### keeper.rekordbox_version <string>
+- `keeper.rekordbox_version <string>`
 Enter the version of Rekordbox to target (eg. 6.8.5 or 7.1.3). You can see available versions on this page or when starting the program. 
 
-### keeper.update_rate <int>
+- `keeper.update_rate <int>`
 Number of updates per second to send. Default is 120, which results in about 60 updates per second due to Windows' sleep granularity. You can set this lower if you want to save CPU usage, but it will result in less accurate timing.
 
-### keeper.slow_update_every_nth <int>
+- `keeper.slow_update_every_nth <int>`
 How often to read additional data from Rekordbox. Saves a bit of CPU usage if increased, but will not really affect worst-case performance. Default is `10`, meaning every 10th update will read the current track name and artist.
 
-### keeper.delay_compensation <float>
+- `keeper.delay_compensation <float>`
 Time in milliseconds to shift the output, can be both negative and positive. Used to compensate for latency in audio, network, lights etc.
 
-### keeper.bar_jitter_tolerance <int>
+- `keeper.bar_jitter_tolerance <int>`
 Due to some technicalities with how values are read, dead reckoning is used to smooth out 4-beat sized jitter. After this number of updates, the jitter is no longer considered jitter and the new position is considered the correct value. Default is 10.
 
-### keeper.keep_warm <true/false>
+- `keeper.keep_warm <true/false>`
 Enabling this means all decks are tracked even when not active. Enabling this increases CPU usage a bit, but means that when you switch decks the new one will already be warmed up and ready to go. Default is `true`.
 
-### keeper.decks <int>
+- `keeper.decks <int>`
 Number of decks to track, 1 to 4.
 
 ## Open Sound Control (OSC)
 Outputs transport and more data over OSC. Check below for all addresses.
-### osc.enabled <true/false>
+- `osc.enabled <true/false>`
 Whether to enable OSC output.
 
-### osc.source <IP address>
+- `osc.source <IP address>`
 Local address to bind to. Default is 127.0.0.1:4450
 
-### osc.destination <IP address>
+- `osc.destination <IP address>`
 Address to send OSC messages to. Default is 127.0.0.1:4460
 
 ## Ableton Link
-### link.enabled <true/false>
+- `link.enabled <true/false>`
 Whether to enable Ableton Link output.
 
-### link.cumulative_error_tolerance <float>
+- `link.cumulative_error_tolerance <float>`
 Cumulative error in beats allowed before a resync is triggered. Default is 0.05. Lower or set to zero if you really want it to track when you scratch, otherwise leave as is to save a bit of CPU and network (and to be nicer to other peers).
 
 ## Track to file
-### file.enabled <true/false>
+- `file.enabled <true/false>`
 Whether to write the current master track to a file. Title, artist and album are written to separate lines.
 
-### file.filename <string>
+- `file.filename <string>`
 Filename to write the current track to. Default is `current_track.txt` in the same directory as the executable.
 
 ## Setlist to file
 This module logs the current master track to a setlist file together with when it was played relative to setlist start. The first line in the file contains the setlist start time in Unix time. On startup, if there already is a setlist file, it will continue appending to it with timestamps relative to the creation of the setlist.
 
-### setlist.enabled <true/false>
+- `setlist.enabled <true/false>`
 Whether to enable setlist output.
 
-### setlist.separator <string>
+- `setlist.separator <string>`
 Separator to use between title and artist in the setlist file. Default is `-`.
 
-### setlist.filename <string>
+- `setlist.filename <string>`
 Where to write the setlist file. Default is `setlist.txt` in the same directory as the executable.
 
 ## OSC Addresses
@@ -92,10 +101,3 @@ Where to write the setlist file. Default is `setlist.txt` in the same directory 
  - `/time` (float) Current track position in seconds
  - `/playback_speed` (float) Current playback speed/pitch, 1.0 for normal speed, 2.0 for double speed etc.
  - `/track/[1|2|3|4|master]/[title|artist|album]` (string) Title/artist/album of the current track on deck 1, 2, 3 or 4, or the master deck.
-
-## Supported versions
-
-| Rekordbox Version  |
-| ----- |
-| `7.1.2`, `7.1.3` |
-| `6.8.5` |
