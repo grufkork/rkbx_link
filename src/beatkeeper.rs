@@ -411,17 +411,22 @@ impl BeatKeeper {
             // }
             // println!();
             // println!("{}", tracker_data.beat);
+
+            let bpm_changed = self.bpm.set(tracker_data.timing_data_raw.current_bpm);
+            let original_bpm_changed = self.original_bpm.set(tracker_data.original_bpm);
+            let playback_speed_changed = self.playback_speed.set(tracker_data.timing_data_raw.playback_speed);
+
             for module in &mut self.running_modules {
                 module.beat_update(tracker_data.beat);
                 module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
-                if self.bpm.set(tracker_data.timing_data_raw.current_bpm) {
+                if bpm_changed {
                     module.bpm_changed(self.bpm.value);
                 }
-                if self.original_bpm.set(tracker_data.original_bpm) {
+                if original_bpm_changed {
                     module.original_bpm_changed(self.original_bpm.value);
                 }
 
-                if self.playback_speed.set(tracker_data.timing_data_raw.playback_speed) {
+                if playback_speed_changed {
                     module.playback_speed_changed(self.playback_speed.value);
                 }
             }
