@@ -23,7 +23,7 @@ const LICENSE_SERVER: &str = "3gg.se:4000";
 #[cfg(feature = "dev")]
 const REPO: &str = "grufkork/rkbx_link/rewrite";
 #[cfg(not(feature = "dev"))]
-const REPO: &str = "grufkork/rkbx_link";
+const REPO: &str = "grufkork/rkbx_link/refs/heads/master";
 
 fn main() {
     println!();
