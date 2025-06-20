@@ -1,57 +1,99 @@
 use core::fmt;
 use std::{collections::HashMap, fs::File, io::Read};
 
+use crate::log::ScopedLogger;
+
 impl RekordboxOffsets {
-    pub fn from_lines(lines: &[String]) -> RekordboxOffsets {
-        let mut rows = lines.iter();
-        RekordboxOffsets {
-            rbversion: rows.next().unwrap().to_string(),
-            deck1bar: Pointer::from_string(rows.next().unwrap()),
-            deck1beat: Pointer::from_string(rows.next().unwrap()),
-            deck2bar: Pointer::from_string(rows.next().unwrap()),
-            deck2beat: Pointer::from_string(rows.next().unwrap()),
-            master_bpm: Pointer::from_string(rows.next().unwrap()),
-            masterdeck_index: Pointer::from_string(rows.next().unwrap()),
+    pub fn from_lines(lines: &[String], logger: &ScopedLogger) -> Result<RekordboxOffsets, String> {
+        let mut rows = lines.iter().peekable();
+
+        let rb_version = rows.next().ok_or("No lines left")?.to_string();
+
+        logger.debug("Masterdeck index");
+        let masterdeck_index = Pointer::from_string(rows.next().ok_or("Missing masterdeck index pointer")?, logger)?;
+
+        let mut sample_position = vec![];
+        let mut current_bpm = vec![];
+        let mut playback_speed = vec![];
+        let mut beat_display = vec![];
+        let mut bar_display = vec![];
+        let mut track_info = vec![];
+
+        while rows.peek().is_some() {
+            logger.debug("Current BPM");
+            current_bpm.push(Pointer::from_string(rows.next().ok_or("Missing BPM pointer")?, logger)?);
+            logger.debug("Beat display");
+            beat_display.push(Pointer::from_string(rows.next().ok_or("Missing beat pointer")?, logger)?);
+            logger.debug("Bar display");
+            bar_display.push(Pointer::from_string(rows.next().ok_or("Missing bar pointer")?, logger)?);
+            logger.debug("Playback speed");
+            playback_speed.push(Pointer::from_string(rows.next().ok_or("Missing pitch pointer")?, logger)?);
+            logger.debug("Sample position");
+            sample_position.push(Pointer::from_string(rows.next().ok_or("Missing sample position pointer")?, logger)?);
+            logger.debug("Track info");
+            track_info.push(Pointer::from_string(rows.next().ok_or("Missing track info pointer")?, logger)?);
         }
+
+        Ok(RekordboxOffsets {
+            rbversion: rb_version,
+            beat_display,
+            bar_display,
+            sample_position,
+            current_bpm,
+            playback_speed,
+            masterdeck_index,
+            track_info,
+        })
     }
 
-    pub fn from_file(name: &str) -> HashMap<String, RekordboxOffsets> {
-        let mut file = File::open(name).unwrap();
+    pub fn from_file(name: &str, logger: ScopedLogger) -> Result<HashMap<String, RekordboxOffsets>, String> {
+        let Ok(mut file) = File::open(name) else {
+            return Err(format!("Could not open offset file {name}"));
+        };
         let mut contents = String::new();
-        file.read_to_string(&mut contents).unwrap();
+        if file.read_to_string(&mut contents).is_err() {
+            return Err(format!("Could not read offset file {name}"));
+        }
         drop(file);
+
+        let mut empty_line_count = 0;
 
         let mut map = HashMap::new();
 
         let mut lines = vec![];
         for line in contents.lines() {
             if line.is_empty() {
-                if !lines.is_empty() {
-                    let o = RekordboxOffsets::from_lines(&lines);
-                    map.insert(o.rbversion.clone(), o);
+                empty_line_count += 1;
+                if empty_line_count >= 2 && !lines.is_empty() {
+                    let offsets = RekordboxOffsets::from_lines(&lines, &logger)?;
+                    map.insert(offsets.rbversion.clone(), offsets);
                     lines.clear();
                 }
-            } else if !line.starts_with('#') {
-                lines.push(line.to_string());
+            } else {
+                empty_line_count = 0;
+                if !line.starts_with('#') {
+                    lines.push(line.to_string());
+                }
             }
         }
 
-        map
+        Ok(map)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RekordboxOffsets {
     pub rbversion: String,
-    pub deck1bar: Pointer,
-    pub deck1beat: Pointer,
-    pub deck2bar: Pointer,
-    pub deck2beat: Pointer,
-    pub master_bpm: Pointer,
     pub masterdeck_index: Pointer,
+    pub sample_position: Vec<Pointer>,
+    pub current_bpm: Vec<Pointer>,
+    pub playback_speed: Vec<Pointer>,
+    pub beat_display: Vec<Pointer>,
+    pub bar_display: Vec<Pointer>,
+    pub track_info: Vec<Pointer>,
 }
 
-#[derive(Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Pointer {
     pub offsets: Vec<usize>,
     pub final_offset: usize,
@@ -65,16 +107,18 @@ impl Pointer {
         }
     }
 
-    pub fn from_string(input: &str) -> Self {
-        let split = input.split(' ').map(hexparse).collect::<Vec<usize>>();
-        Self::new(split[0..split.len() - 1].to_vec(), *split.last().unwrap())
+    pub fn from_string(input: &str, logger: &ScopedLogger) -> Result<Self, String> {
+        logger.debug(&format!("Parsing pointer: {input}"));
+        let split = input.split(' ').map(hexparse).collect::<Result<Vec<usize>, String>>()?;
+        let last = *split.last().ok_or("Last offset is missing")?;
+        Ok(Self::new(split[0..split.len() - 1].to_vec(), last))
     }
 }
 
 impl fmt::Display for Pointer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut res = "[".to_string();
-        for offset in &self.offsets{
+        for offset in &self.offsets {
             res += &format!("{offset:X}, ");
         }
         res += &format!("{:X}]", self.final_offset);
@@ -83,6 +127,6 @@ impl fmt::Display for Pointer {
     }
 }
 
-fn hexparse(input: &str) -> usize {
-    usize::from_str_radix(input, 16).unwrap()
+fn hexparse(input: &str) -> Result<usize, String> {
+    usize::from_str_radix(input, 16).map_err(|_| format!("Failed to parse hex value: {input}"))
 }

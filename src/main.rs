@@ -1,468 +1,264 @@
-use rosc::{encoder::encode, OscMessage, OscPacket, OscType};
-use rusty_link::{AblLink, SessionState};
-use std::process::Command;
-use std::{
-    env,
-    io::{stdout, Write},
-    marker::PhantomData,
-    net::UdpSocket,
-    path::Path,
-    sync::mpsc::channel,
-    thread::{sleep, spawn},
-    time::{Duration, Instant},
-};
-use toy_arms::external::{read, Process};
-use winapi::um::winnt::HANDLE;
+use std::{fs, rc::Rc};
+use std::path::Path;
+use log::{Logger, ScopedLogger};
+use outputmodules::ModuleDefinition;
+use beatkeeper::BeatKeeper;
 
 mod offsets;
-use offsets::{Pointer, RekordboxOffsets};
+use offsets::RekordboxOffsets;
 
-extern "C" {
-    fn _getch() -> core::ffi::c_char;
-}
+mod outputmodules;
 
-fn getch() -> i8 {
-    unsafe { _getch() }
-}
+mod config;
+mod log;
+mod beatkeeper;
 
-struct Value<T> {
-    address: usize,
-    handle: HANDLE,
-    _marker: PhantomData<T>,
-}
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-impl<T> Value<T> {
-    fn new(h: HANDLE, base: usize, offsets: Pointer) -> Value<T> {
-        let mut address = base;
+#[cfg(feature = "dev")]
+const LICENSE_SERVER: &str = "localhost:4000";
+#[cfg(not(feature = "dev"))]
+const LICENSE_SERVER: &str = "3gg.se:4000";
 
-        for offset in &offsets.offsets {
-            address = read::<usize>(h, address + offset)
-                .expect(&format!("\nMemory read failed, check your Rekordbox version! Try updating with -u.\nIf nothing works, wait for an update or send this entire error message to @grufkork. \n\nBase: {base:X}, Offsets: {offsets}"));
-        }
-        address += offsets.final_offset;
-
-        Value::<T> {
-            address,
-            handle: h,
-            _marker: PhantomData::<T>,
-        }
-    }
-
-    fn read(&self) -> T {
-        read::<T>(self.handle, self.address).unwrap()
-    }
-}
-
-pub struct Rekordbox {
-    master_bpm_val: Value<f32>,
-    bar1_val: Value<i32>,
-    beat1_val: Value<i32>,
-    bar2_val: Value<i32>,
-    beat2_val: Value<i32>,
-    masterdeck_index_val: Value<u8>,
-
-    pub beats1: i32,
-    pub beats2: i32,
-    pub master_beats: i32,
-    pub master_bpm: f32,
-    pub masterdeck_index: u8,
-}
-
-impl Rekordbox {
-    fn new(offsets: RekordboxOffsets) -> Self {
-        let rb = Process::from_process_name("rekordbox.exe")
-            .expect("Could not find Rekordbox process! ");
-        let h = rb.process_handle;
-
-        let base = rb.get_module_base("rekordbox.exe").unwrap();
-
-        let master_bpm_val: Value<f32> = Value::new(h, base, offsets.master_bpm);
-
-        let bar1_val: Value<i32> = Value::new(h, base, offsets.deck1bar);
-        let beat1_val: Value<i32> = Value::new(h, base, offsets.deck1beat);
-        let bar2_val: Value<i32> = Value::new(h, base, offsets.deck2bar);
-        let beat2_val: Value<i32> = Value::new(h, base, offsets.deck2beat);
-
-        let masterdeck_index_val: Value<u8> = Value::new(h, base, offsets.masterdeck_index);
-
-        Self {
-            master_bpm_val,
-            bar1_val,
-            beat1_val,
-            bar2_val,
-            beat2_val,
-
-            masterdeck_index_val,
-
-            beats1: -1,
-            beats2: -1,
-            master_bpm: 120.0,
-            masterdeck_index: 0,
-            master_beats: 0,
-        }
-    }
-
-    fn update(&mut self) {
-        self.master_bpm = self.master_bpm_val.read();
-        self.beats1 = self.bar1_val.read() * 4 + self.beat1_val.read();
-        self.beats2 = self.bar2_val.read() * 4 + self.beat2_val.read();
-        self.masterdeck_index = self.masterdeck_index_val.read();
-
-        self.master_beats = if self.masterdeck_index == 0 {
-            self.beats1
-        } else {
-            self.beats2
-        };
-    }
-}
-
-pub struct BeatKeeper {
-    rb: Option<Rekordbox>,
-    last_beat: i32,
-    pub beat_fraction: f32,
-    pub last_masterdeck_index: u8,
-    pub offset_micros: f32,
-    pub last_bpm: f32,
-    pub new_beat: bool,
-}
-
-impl BeatKeeper {
-    pub fn new(offsets: RekordboxOffsets) -> Self {
-        BeatKeeper {
-            rb: Some(Rekordbox::new(offsets)),
-            last_beat: 0,
-            beat_fraction: 1.,
-            last_masterdeck_index: 0,
-            offset_micros: 0.,
-            last_bpm: 0.,
-            new_beat: false,
-        }
-    }
-
-    pub fn dummy() -> Self {
-        BeatKeeper {
-            rb: None,
-            last_beat: 0,
-            beat_fraction: 1.,
-            last_masterdeck_index: 0,
-            offset_micros: 0.,
-            last_bpm: 0.,
-            new_beat: false,
-        }
-    }
-
-    pub fn update(&mut self, delta: Duration) {
-        if let Some(rb) = &mut self.rb {
-            let beats_per_micro = rb.master_bpm / 60. / 1000000.;
-
-            rb.update(); // Fetch values from rkbx memory
-
-            if rb.masterdeck_index != self.last_masterdeck_index {
-                self.last_masterdeck_index = rb.masterdeck_index;
-                self.last_beat = rb.master_beats;
-            }
-
-            if (rb.master_beats - self.last_beat).abs() > 0 {
-                self.last_beat = rb.master_beats;
-                self.beat_fraction = 0.;
-                self.new_beat = true;
-            }
-            self.beat_fraction =
-                (self.beat_fraction + delta.as_micros() as f32 * beats_per_micro) % 1.;
-        } else {
-            self.beat_fraction = (self.beat_fraction + delta.as_secs_f32() * 130. / 60.) % 1.;
-        }
-    }
-    pub fn get_beat_faction(&mut self) -> f32 {
-        (self.beat_fraction
-            + if let Some(rb) = &self.rb {
-                let beats_per_micro = rb.master_bpm / 60. / 1000000.;
-                self.offset_micros * beats_per_micro
-            } else {
-                0.
-            }
-            + 1.)
-            % 1.
-    }
-
-    pub fn get_bpm_changed(&mut self) -> Option<f32> {
-        if let Some(rb) = &self.rb {
-            if rb.master_bpm != self.last_bpm {
-                self.last_bpm = rb.master_bpm;
-                return Some(rb.master_bpm);
-            }
-        }
-        None
-    }
-
-    pub fn get_new_beat(&mut self) -> bool {
-        if self.new_beat {
-            self.new_beat = false;
-            return true;
-        }
-        false
-    }
-
-    pub fn change_beat_offset(&mut self, offset: f32) {
-        self.offset_micros += offset;
-    }
-}
-
-const CHARS: [&str; 4] = ["|", "/", "-", "\\"];
+#[cfg(feature = "dev")]
+const REPO: &str = "grufkork/rkbx_link/rewrite";
+#[cfg(not(feature = "dev"))]
+const REPO: &str = "grufkork/rkbx_link";
 
 fn main() {
-    if !Path::new("./offsets").exists() {
-        println!("Offsets not found, downloading from repo...");
-        download_offsets();
+    println!();
+    println!("=====================");
+    println!();
+    println!("Rekordbox Link v{VERSION}");
+    println!("Updates          https://github.com/grufkork/rkbx_link/releases/latest");
+    println!("Get a license    https://3gg.se/products/rkbx_link");
+    println!("Repo and docs    https://github.com/grufkork/rkbx_link");
+    println!("Missing a feature? Spotted a bug? Just shoot me a message!");
+    println!();
+    println!("=====================");
+    println!();
+
+    
+
+    let logger = Rc::new(Logger::new(true));
+
+    if let Err(e) = fs::create_dir("./data"){
+        match e.kind(){
+            std::io::ErrorKind::AlreadyExists => {}, // Directory already exists, no problem
+            _ => {
+                logger.error("App", &format!("Failed to create data directory: {e}"));
+                enter_to_exit();
+                return;
+            }
+        }
     }
 
-    let (tx, rx) = channel::<i8>();
-    spawn(move || loop {
-        tx.send(getch()).unwrap();
-    });
+    let mut config = config::Config::read(ScopedLogger::new(&logger, "Config"));
 
-    let args: Vec<String> = env::args().collect();
+    let logger = Rc::new(Logger::new(config.get_or_default("app.debug", true)));
+    config.logger = ScopedLogger::new(&logger, "Config");
+    let applogger = ScopedLogger::new(&logger, "App");
 
-    let mut source_address = "0.0.0.0:0".to_string();
-    let mut target_address = "127.0.0.1:6669".to_string();
 
-    let mut osc_enabled = false;
+    let modules = vec![
+        ModuleDefinition::new("link", "Ableton Link", outputmodules::abletonlink::AbletonLink::create),
+        ModuleDefinition::new("osc", "OSC", outputmodules::osc::Osc::create),
+        ModuleDefinition::new("file", "File", outputmodules::file::File::create),
+        ModuleDefinition::new("setlist", "Setlist", outputmodules::setlist::Setlist::create),
+    ];
 
-    let version_offsets = RekordboxOffsets::from_file("offsets");
-    let mut versions: Vec<String> = version_offsets.keys().map(|x| x.to_string()).collect();
+
+    let mut update = config.get_or_default("app.auto_update", true);
+    if !Path::new("./data/offsets").exists() {
+        applogger.err("No offset file found, updating...");
+        update = true;
+    }
+
+    if update{
+        let license = config.get_or_default::<String>("app.licensekey", "evaluation".to_string());
+        update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"));
+    }
+
+    let offsets = match RekordboxOffsets::from_file("./data/offsets", ScopedLogger::new(&logger, "Parser")){
+        Ok(offsets) => offsets,
+        Err(e) => {
+            applogger.err(&format!("Failed to parse offsets: {e}"));
+            applogger.err("Enable debug in config for details");
+            enter_to_exit();
+            return;
+        }
+    };
+
+    let mut versions: Vec<String> = offsets
+        .keys()
+        .map(|x| x.to_string())
+        .collect();
     versions.sort();
     versions.reverse();
-    let mut target_version = versions[0].clone();
 
-    let mut args_iter = args.iter();
-    args_iter.next();
-    while let Some(arg) = args_iter.next() {
-        let mut chars = arg.chars();
-        if let Some(char) = chars.next() {
-            if char == '-' {
-                if let Some(flag) = chars.next() {
-                    match flag.to_string().as_str() {
-                        "u" => {
-                            println!("Updating offsets...");
-                            download_offsets();
-                            return;
-                        }
-                        "o" => {
-                            osc_enabled = true;
-                        }
-                        "s" => {
-                            source_address = args_iter.next().unwrap().to_string();
-                        }
-                        "t" => {
-                            target_address = args_iter.next().unwrap().to_string();
-                        }
-                        "v" => {
-                            target_version = args_iter.next().unwrap().to_string();
-                        }
-                        "h" => {
-                            println!(
-                                " - Rekordbox OSC v{} -
-A tool for sending Rekordbox timing data to visualizers using OSC
+    applogger.info(&format!("Rekordbox versions available: {versions:?}"));
 
-Flags:
+    let selected_version = if let Some(version) = config.get("keeper.rekordbox_version") {
+        version
+    }else{
+        applogger.warn("No version specified in config, using latest version");
+        versions[0].clone()
+    };
 
- -h  Print this help
- -u  Fetch latest offset list from GitHub and exit
- -v  Rekordbox version to target, eg. 6.7.3
+    applogger.info(&format!("Targeting Rekordbox version: {selected_version}"));
 
--- OSC --
- -o  Enable OSC
- -s  Source address, eg. 127.0.0.1:1337
- -t  Target address, eg. 192.168.1.56:6667
-
-Use i/k to change the beat offset by +/- 1ms
-
-Current default version: {}
-Available versions:",
-                                env!("CARGO_PKG_VERSION"),
-                                versions[0]
-                            );
-                            println!("{}", versions.join(", "));
-
-                            /*for v in  {
-                                print!("{v}, ");
-                            }*/
-                            println!();
-                            return;
-                        }
-
-                        c => {
-                            println!("Unknown flag -{c}");
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let offsets = if let Some(offsets) = version_offsets.get(target_version.as_str()) {
-        offsets
-    } else {
-        println!("Unsupported version! {target_version}");
+    let offset = if let Some(offset) = offsets.get(&selected_version) {
+        offset
+    }else{
+        applogger.err(&format!("Offsets for Rekordbox version {selected_version} not available"));
+        enter_to_exit();
         return;
     };
-    println!("Targeting Rekordbox version {target_version}");
 
-    let socket = if osc_enabled {
-        println!("Connecting from: {}", source_address);
-        println!("Connecting to:   {}", target_address);
-        let socket = match UdpSocket::bind(&source_address) {
-            Ok(socket) => socket,
-            Err(e) => {
-                println!("Failed to bind to address {source_address}. Error:\n{}", e);
-                return;
-            }
-        };
-        match socket.connect(&target_address) {
-            Ok(_) => (),
-            Err(e) => {
-                println!(
-                    "Failed to open socket to address {target_address}. Error:\n{}",
-                    e
-                );
-                return;
-            }
-        };
-        Some(socket)
+    BeatKeeper::start(
+        offset.clone(),
+        modules,
+        config,
+        ScopedLogger::new(&logger, "BeatKeeper"),
+    );
+
+
+}
+
+fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
+    logger.info("Checking for updates...");
+    // Exe update
+    let new_exe_version = match get_git_file_http("version_exe", repo) {
+        Ok(version) => version,
+        Err(e) => {
+            logger.err(&format!("Failed to fetch new executable version from repository: {e}"));
+            return;
+        }
+    };
+    let new_exe_version = new_exe_version.trim();
+
+
+    if new_exe_version == VERSION {
+        logger.info(&format!("Program up to date (v{new_exe_version})"));
     } else {
-        None
+        logger.warn(" ");
+        logger.warn(&format!("   !! An executable update available is available: v{new_exe_version} !!"));
+        logger.warn("Update the program to get the latest offset updates");
+        logger.warn("https://github.com/grufkork/rkbx_link/releases/latest");
+        logger.warn("");
+        return;
+    }
+
+    // Offset update
+    let Ok(new_offset_version) = get_licensed_file("version_offsets", license, &logger) else {
+        logger.err("Failed to fetch new offset version");
+        return;
+    };
+    let Ok(new_offset_version) = new_offset_version.trim().parse::<i32>() else {
+        logger.err(&format!("Failed to parse new offset version: {new_offset_version}"));
+        return;
     };
 
-    println!();
-    println!(
-        "Press i/k to change offset in milliseconds. c to quit. -h flag for help and version info."
-    );
-    println!();
+    let mut update_offsets = false;
+    
 
-    let mut keeper = BeatKeeper::new(offsets.clone());
-    let link = AblLink::new(120.);
-    link.enable(false);
-
-    let mut state = SessionState::new();
-    link.capture_app_session_state(&mut state);
-    link.enable(true);
-
-    // Due to Windows timers having a default resolution 0f 15.6ms, we need to use a "too high"
-    // value to acheive ~60Hz
-    let period = Duration::from_micros(1000000 / 120);
-
-    let mut last_instant = Instant::now();
-
-    let mut count = 0;
-    let mut step = 0;
-
-    let mut stdout = stdout();
-
-    println!("Entering loop");
-    loop {
-        let delta = Instant::now() - last_instant; // Is this timer accurate enough?
-        last_instant = Instant::now();
-
-        keeper.update(delta); // Get values, advance time
-
-        let bfrac = keeper.get_beat_faction();
-
-        if let Some(socket) = &socket {
-            let msg = OscPacket::Message(OscMessage {
-                addr: "/beat".to_string(),
-                args: vec![OscType::Float(bfrac)],
-            });
-            let packet = encode(&msg).unwrap();
-            socket.send(&packet[..]).unwrap();
-        }
-
-        if let Some(bpm) = keeper.get_bpm_changed() {
-            state.set_tempo(bpm.into(), link.clock_micros());
-            link.commit_app_session_state(&state);
-
-            if let Some(socket) = &socket {
-                let msg = OscPacket::Message(OscMessage {
-                    addr: "/bpm".to_string(),
-                    args: vec![OscType::Float(bpm)],
-                });
-                let packet = encode(&msg).unwrap();
-                socket.send(&packet[..]).unwrap();
-            }
-        }
-
-        if keeper.get_new_beat() {
-            let current_link_beat_approx = state.beat_at_time(link.clock_micros(), 4.).round();
-            let target_beat = ((keeper.last_beat as f64) % 4. - current_link_beat_approx % 4. + 4.)
-                % 4.
-                + current_link_beat_approx
-                - 1.; // Ensure the 1 is on the 1
-
-            state.request_beat_at_time(target_beat, link.clock_micros(), 4.);
-            link.commit_app_session_state(&state);
-        }
-
-        while let Ok(key) = rx.try_recv() {
-            match key {
-                99 => {
-                    //"c"
-                    return;
-                }
-                105 => {
-                    keeper.change_beat_offset(1000.);
-                }
-                107 => {
-                    keeper.change_beat_offset(-1000.);
-                }
-                _ => (),
-            }
-        }
-
-        if count % 20 == 0 {
-            step = (step + 1) % 4;
-
-            let frac = (keeper.last_beat - 1) % 4;
-
-            print!(
-                "\rRunning {} [{}] Deck {}     OSC Offset: {}ms     Frq: {: >3}Hz    Peers:{}   BPM:{}    ",
-                CHARS[step],
-                (0..4)
-                .map(|i| {
-                    if i == frac {
-                        "."
-                    } else {
-                        " "
+    if Path::new("./data/offsets").exists(){
+        if Path::new("./data/version_offsets").exists(){
+            match fs::read_to_string("./data/version_offsets"){
+                Ok(version_offsets) =>{
+                    if let Ok(version) = version_offsets.trim().parse::<i32>(){
+                        if version < new_offset_version {
+                            logger.info("Offset update available");
+                            update_offsets = true;
+                        }else{
+                            logger.info(&format!("Offsets up to date (v{new_offset_version})"));
+                        }
+                    }else{
+                        logger.err("Failed to parse version_offsets file");
+                        update_offsets = true;
                     }
-                })
-                .collect::<String>(),
-                keeper.last_masterdeck_index,
-                keeper.offset_micros / 1000.,
-                1000000 / (delta.as_micros().max(1)),
-                link.num_peers(),
-                keeper.last_bpm
-                );
-
-            stdout.flush().unwrap();
+                }
+                Err(e) => {
+                    logger.err(&format!("Failed to read version_offsets file: {e}"));
+                    update_offsets = true;
+                }
+            }
+        }else{
+            logger.warn("Missing version_offsets file");
+            update_offsets = true;
         }
-        count = (count + 1) % 120;
+    }else{
+        logger.warn("Missing offsets file");
+        update_offsets = true;
+    }
 
-        sleep(period);
+    if update_offsets && y_n("Update offsets?"){
+        // Offset update available
+        logger.info("Downloading offsets...");
+        match get_licensed_file("offsets", license, &logger) {
+            Ok(offsets) =>{
+                std::fs::write("./data/offsets", offsets).unwrap();
+                std::fs::write("./data/version_offsets", new_offset_version.to_string()).unwrap();
+                logger.good("Offsets updated");
+            },
+            Err(e) => {
+                logger.err(&format!("Failed to fetch offsets from server: {e}"));
+            }
+        }
     }
 }
 
-fn download_offsets() {
-    match Command::new("curl")
-        .args([
-            "-o",
-            "offsets",
-            "https://raw.githubusercontent.com/grufkork/rkbx_osc/master/offsets",
-        ])
-        .output()
-    {
-        Ok(output) => {
-            println!("{}", String::from_utf8(output.stdout).unwrap());
-            println!("{}", String::from_utf8(output.stderr).unwrap());
-        }
-        Err(error) => println!("{}", error),
+fn get_git_file_http(path: &str, repo: &str) -> Result<String, String> {
+    let url = format!("https://raw.githubusercontent.com/{repo}/{path}");
+    let Ok(res) = reqwest::blocking::get(&url) else {
+        return Err(format!("Get error: {}", &url));
+    };
+    if res.status().is_success() {
+        Ok(res.text().map_err(|e| e.to_string())?)
+    } else {
+        Err(format!("Get error {}: {}", res.status(), &url))
     }
-    println!("Done!");
 }
+
+fn get_licensed_file(path: &str, license: &str, logger: &ScopedLogger) -> Result<String, String> {
+    let url = format!("https://{LICENSE_SERVER}/{path}?license={license}");
+    logger.debug(&format!("Fetching: {}", &url));
+    let client = reqwest::blocking::Client::builder()
+        .danger_accept_invalid_certs(cfg!(feature = "dev"))
+        .build().unwrap();
+
+    let res = match client.get(&url).send() {
+        Ok(res) => res,
+        Err(e) => return Err(format!("Get error: {e}")),
+    };
+
+    logger.debug(&format!("{}: {}", res.status(), &url));
+
+    match res.status() {
+        reqwest::StatusCode::UNAUTHORIZED => {
+            logger.warn("Evaluation or invalid license. Check your license key and try again.");
+            Err("Unauthorized".to_string())
+        },
+        reqwest::StatusCode::OK => Ok(res.text().map_err(|e| e.to_string())?),
+        _ => Err(format!("Get error {}: {}", res.status(), &url))
+    }
+}
+
+fn y_n(msg: &str) -> bool {
+    use std::io::{self, Write};
+    let mut input = String::new();
+    print!("{msg} (y/n): ");
+    io::stdout().flush().unwrap();
+    io::stdin().read_line(&mut input).unwrap();
+    matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
+fn enter_to_exit() {
+    use std::io::{self, Write};
+    let mut input = String::new();
+    print!("Press Enter to exit...");
+    io::stdout().flush().unwrap();
+    io::stdin().read_line(&mut input).unwrap();
+}
+
+// !cargo r

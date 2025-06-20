@@ -1,0 +1,49 @@
+# Replace "evaluation" with your license key
+app.licensekey evaluation
+# Check for updates at startup (enable only if you have a license)
+app.auto_update false
+# Show debug logs
+app.debug false
+
+# Rekordbox version to target
+keeper.rekordbox_version 7.1.3
+# How often to fetch song position in Hz
+keeper.update_rate 120
+# Every nth update, perform a slow update
+keeper.slow_update_every_nth 10
+# Delay compensation in ms
+# Positive values advance the output
+keeper.delay_compensation 0
+# Number of updates to ignore bar-sized jitter for
+keeper.bar_jitter_tolerance 10
+# Keep track of non-master decks. Uses more CPU, but ensures SIGNIFICANTLY smoother transitions between decks
+keeper.keep_warm true
+# Number of active decks
+keeper.decks 4
+
+
+
+# == Open Sound Control ==
+osc.enabled true
+# Local address to bind to
+osc.source 127.0.0.1:4450
+# Remore address to send to
+osc.destination 127.0.0.1:4460
+
+# == Ableton Link ==
+link.enabled true
+# Cumulative time error before forcing a correction
+link.cumulative_error_tolerance 0.05
+
+
+# == Write current track to file ==
+file.enabled false
+# Path to write to
+file.filename current_track.txt
+
+# == Setlist logging with timestamps ==
+setlist.enabled false
+# Artist - Track separator symbol
+setlist.separator -
+# Path to write to
+setlist.filename setlist.txt

@@ -1,14 +1,20 @@
 [package]
-name = "rkbx_osc"
-version = "0.3.2"
+name = "rkbx_link"
+version = "1.0.0"
 edition = "2021"
 authors = ["grufkork"]
-repository = "https://github.com/grufkork/rkbx_osc"
+repository = "https://github.com/grufkork/rkbx_link"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-toy-arms = {version = "0.9.4", features = ["external"]}
+# toy-arms = {version = "0.9.4", features = ["external"]}
+toy-arms = { git = "https://github.com/grufkork/toy-arms", branch = "0.9.4", features = ["external"] }
 winapi = "0.3.9"
 rosc = "0.10.1"
 rusty_link = "0.4.2"
+reqwest = {version = "0.12.7", features = ["blocking"]}
+termcolor = "1.4.1"
+
+[features]
+dev = []
