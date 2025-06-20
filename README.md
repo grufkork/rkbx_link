@@ -8,7 +8,7 @@ With the download of this software you will receive an evaluation license with o
 ## Usage
 Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file to your liking, then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. During startup all available Rekordbox versions are printed.
 
-## Supported versions
+## Supported versions (with license)
 
 | Rekordbox Version  |
 | ----- |

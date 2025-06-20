@@ -28,10 +28,13 @@ const REPO: &str = "grufkork/rkbx_link";
 fn main() {
     println!();
     println!("=====================");
+    println!();
     println!("Rekordbox Link v{VERSION}");
-    println!("Repo and docs            https://github.com/grufkork/rkbx_link");
-    println!("Updates/buy a license    https://3gg.se/products/rkbx_link");
+    println!("Updates          https://github.com/grufkork/rkbx_link/releases/latest");
+    println!("Get a license    https://3gg.se/products/rkbx_link");
+    println!("Repo and docs    https://github.com/grufkork/rkbx_link");
     println!("Missing a feature? Spotted a bug? Just shoot me a message!");
+    println!();
     println!("=====================");
     println!();
 
@@ -129,7 +132,6 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
         Ok(version) => version,
         Err(e) => {
             logger.err(&format!("Failed to fetch new executable version from repository: {e}"));
-            enter_to_exit();
             return;
         }
     };
