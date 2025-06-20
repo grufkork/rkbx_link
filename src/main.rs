@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::{fs, rc::Rc};
 use std::path::Path;
 use log::{Logger, ScopedLogger};
@@ -45,6 +44,7 @@ fn main() {
             std::io::ErrorKind::AlreadyExists => {}, // Directory already exists, no problem
             _ => {
                 logger.error("App", &format!("Failed to create data directory: {e}"));
+                enter_to_exit();
                 return;
             }
         }
@@ -76,9 +76,14 @@ fn main() {
         update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"));
     }
 
-    let Ok(offsets) = RekordboxOffsets::from_file("./data/offsets", ScopedLogger::new(&logger, "Parser")) else {
-        applogger.err("Failed to parse offsets. Enable debug for details");
-        return;
+    let offsets = match RekordboxOffsets::from_file("./data/offsets", ScopedLogger::new(&logger, "Parser")){
+        Ok(offsets) => offsets,
+        Err(e) => {
+            applogger.err(&format!("Failed to parse offsets: {e}"));
+            applogger.err("Enable debug in config for details");
+            enter_to_exit();
+            return;
+        }
     };
 
     let mut versions: Vec<String> = offsets
@@ -103,6 +108,7 @@ fn main() {
         offset
     }else{
         applogger.err(&format!("Offsets for Rekordbox version {selected_version} not available"));
+        enter_to_exit();
         return;
     };
 
@@ -123,6 +129,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
         Ok(version) => version,
         Err(e) => {
             logger.err(&format!("Failed to fetch new executable version from repository: {e}"));
+            enter_to_exit();
             return;
         }
     };
@@ -151,26 +158,31 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
     };
 
     let mut update_offsets = false;
-    if !Path::new("./data/version_offsets").exists(){
-        logger.warn("Missing version_offsets file");
-        update_offsets = true;
-    }
+    
 
     if Path::new("./data/offsets").exists(){
-        if let Ok(version_offsets) = fs::read_to_string("./data/version_offsets"){
-            if let Ok(version) = version_offsets.trim().parse::<i32>(){
-                if version < new_offset_version {
-                    logger.info("Offset update available");
-                    update_offsets = true;
-                }else{
-                    logger.info(&format!("Offsets up to date (v{new_offset_version})"));
+        if Path::new("./data/version_offsets").exists(){
+            match fs::read_to_string("./data/version_offsets"){
+                Ok(version_offsets) =>{
+                    if let Ok(version) = version_offsets.trim().parse::<i32>(){
+                        if version < new_offset_version {
+                            logger.info("Offset update available");
+                            update_offsets = true;
+                        }else{
+                            logger.info(&format!("Offsets up to date (v{new_offset_version})"));
+                        }
+                    }else{
+                        logger.err("Failed to parse version_offsets file");
+                        update_offsets = true;
+                    }
                 }
-            }else{
-                logger.warn("Failed to parse version_offsets file");
-                update_offsets = true;
+                Err(e) => {
+                    logger.err(&format!("Failed to read version_offsets file: {e}"));
+                    update_offsets = true;
+                }
             }
         }else{
-            logger.warn("Failed to read version_offsets file");
+            logger.warn("Missing version_offsets file");
             update_offsets = true;
         }
     }else{
@@ -237,6 +249,14 @@ fn y_n(msg: &str) -> bool {
     io::stdout().flush().unwrap();
     io::stdin().read_line(&mut input).unwrap();
     matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
+}
+
+fn enter_to_exit() {
+    use std::io::{self, Write};
+    let mut input = String::new();
+    print!("Press Enter to exit...");
+    io::stdout().flush().unwrap();
+    io::stdin().read_line(&mut input).unwrap();
 }
 
 // !cargo r

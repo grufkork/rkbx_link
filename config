@@ -1,7 +1,7 @@
 # Replace "evaluation" with your license key
 app.licensekey evaluation
 # Check for updates at startup (enable only if you have a license)
-app.auto_update true
+app.auto_update false
 # Show debug logs
 app.debug false
 

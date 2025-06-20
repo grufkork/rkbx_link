@@ -4,13 +4,13 @@ use std::{collections::HashMap, fs::File, io::Read};
 use crate::log::ScopedLogger;
 
 impl RekordboxOffsets {
-    pub fn from_lines(lines: &[String], logger: &ScopedLogger) -> Option<RekordboxOffsets> {
+    pub fn from_lines(lines: &[String], logger: &ScopedLogger) -> Result<RekordboxOffsets, String> {
         let mut rows = lines.iter().peekable();
 
-        let rb_version = rows.next()?.to_string();
+        let rb_version = rows.next().ok_or("No lines left")?.to_string();
 
         logger.debug("Masterdeck index");
-        let masterdeck_index = Pointer::from_string(rows.next()?, logger);
+        let masterdeck_index = Pointer::from_string(rows.next().ok_or("Missing masterdeck index pointer")?, logger)?;
 
         let mut sample_position = vec![];
         let mut current_bpm = vec![];
@@ -21,20 +21,20 @@ impl RekordboxOffsets {
 
         while rows.peek().is_some() {
             logger.debug("Current BPM");
-            current_bpm.push(Pointer::from_string(rows.next()?, logger));
+            current_bpm.push(Pointer::from_string(rows.next().ok_or("Missing BPM pointer")?, logger)?);
             logger.debug("Beat display");
-            beat_display.push(Pointer::from_string(rows.next()?, logger));
+            beat_display.push(Pointer::from_string(rows.next().ok_or("Missing beat pointer")?, logger)?);
             logger.debug("Bar display");
-            bar_display.push(Pointer::from_string(rows.next()?, logger));
+            bar_display.push(Pointer::from_string(rows.next().ok_or("Missing bar pointer")?, logger)?);
             logger.debug("Playback speed");
-            playback_speed.push(Pointer::from_string(rows.next()?, logger));
+            playback_speed.push(Pointer::from_string(rows.next().ok_or("Missing pitch pointer")?, logger)?);
             logger.debug("Sample position");
-            sample_position.push(Pointer::from_string(rows.next()?, logger));
+            sample_position.push(Pointer::from_string(rows.next().ok_or("Missing sample position pointer")?, logger)?);
             logger.debug("Track info");
-            track_info.push(Pointer::from_string(rows.next()?, logger));
+            track_info.push(Pointer::from_string(rows.next().ok_or("Missing track info pointer")?, logger)?);
         }
 
-        Some(RekordboxOffsets {
+        Ok(RekordboxOffsets {
             rbversion: rb_version,
             beat_display,
             bar_display,
@@ -65,11 +65,8 @@ impl RekordboxOffsets {
             if line.is_empty() {
                 empty_line_count += 1;
                 if empty_line_count >= 2 && !lines.is_empty() {
-                    if let Some(offsets) = RekordboxOffsets::from_lines(&lines, &logger) {
-                        map.insert(offsets.rbversion.clone(), offsets);
-                    } else {
-                        return Err("Failed to parse offsets".to_string());
-                    }
+                    let offsets = RekordboxOffsets::from_lines(&lines, &logger)?;
+                    map.insert(offsets.rbversion.clone(), offsets);
                     lines.clear();
                 }
             } else {
@@ -110,10 +107,11 @@ impl Pointer {
         }
     }
 
-    pub fn from_string(input: &str, logger: &ScopedLogger) -> Self {
+    pub fn from_string(input: &str, logger: &ScopedLogger) -> Result<Self, String> {
         logger.debug(&format!("Parsing pointer: {input}"));
-        let split = input.split(' ').map(hexparse).collect::<Vec<usize>>();
-        Self::new(split[0..split.len() - 1].to_vec(), *split.last().unwrap())
+        let split = input.split(' ').map(hexparse).collect::<Result<Vec<usize>, String>>()?;
+        let last = *split.last().ok_or("Last offset is missing")?;
+        Ok(Self::new(split[0..split.len() - 1].to_vec(), last))
     }
 }
 
@@ -129,6 +127,6 @@ impl fmt::Display for Pointer {
     }
 }
 
-fn hexparse(input: &str) -> usize {
-    usize::from_str_radix(input, 16).unwrap()
+fn hexparse(input: &str) -> Result<usize, String> {
+    usize::from_str_radix(input, 16).map_err(|_| format!("Failed to parse hex value: {input}"))
 }
