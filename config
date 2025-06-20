@@ -13,7 +13,7 @@ keeper.update_rate 120
 keeper.slow_update_every_nth 10
 # Delay compensation in ms
 # Positive values advance the output
-keeper.delay_compensation -30
+keeper.delay_compensation 0
 # Number of updates to ignore bar-sized jitter for
 keeper.bar_jitter_tolerance 10
 # Keep track of non-master decks. Uses more CPU, but ensures SIGNIFICANTLY smoother transitions between decks
