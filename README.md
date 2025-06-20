@@ -6,7 +6,7 @@ Export rock-solid timing information to sync live lights and music to your DJ se
 With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.1.3. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially making loads of dosh, consider extra support on my [ko-fi](https://ko-fi.com/grufkork).
 
 ## Usage
-Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file to your liking, then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. During startup all available Rekordbox versions are printed.
+Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file to your liking (most importantly set the correct Rekordbox version!), then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. During startup all available Rekordbox versions are printed.
 
 ## Supported versions (with license)
 
