@@ -74,10 +74,8 @@ fn main() {
         update = true;
     }
 
-    if update{
-        let license = config.get_or_default::<String>("app.licensekey", "evaluation".to_string());
-        update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"));
-    }
+    let license = config.get_or_default::<String>("app.licensekey", "evaluation".to_string());
+    update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"), update);
 
     let offsets = match RekordboxOffsets::from_file("./data/offsets", ScopedLogger::new(&logger, "Parser")){
         Ok(offsets) => offsets,
@@ -125,7 +123,7 @@ fn main() {
 
 }
 
-fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
+fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offsets: bool){
     logger.info("Checking for updates...");
     // Exe update
     let new_exe_version = match get_git_file_http("version_exe", repo) {
@@ -149,6 +147,11 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
         return;
     }
 
+    if ! update_offsets {
+        logger.info("Auto update disabled, skipping offset update check");
+        return;
+    }
+
     // Offset update
     let Ok(new_offset_version) = get_licensed_file("version_offsets", license, &logger) else {
         logger.err("Failed to fetch new offset version");
@@ -160,7 +163,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger){
     };
 
     let mut update_offsets = false;
-    
+
 
     if Path::new("./data/offsets").exists(){
         if Path::new("./data/version_offsets").exists(){

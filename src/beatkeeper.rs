@@ -41,7 +41,7 @@ impl<T> Value<T> {
             _marker: PhantomData::<T>,
         })
     }
-    fn pointers_to_vals(h: *mut c_void, base: usize, pointers: Vec<Pointer>) -> Result<Vec<Value<T>>, ReadError> {
+    fn pointers_to_vals(h: *mut c_void, base: usize, pointers: &[Pointer]) -> Result<Vec<Value<T>>, ReadError> {
         pointers
             .iter()
             .map(|x| {Value::new(h, base, x)})
@@ -73,7 +73,7 @@ impl<T> PointerChainValue<T>{
         }
     }
 
-    fn pointers_to_vals(h: *mut c_void, base: usize, pointers: Vec<Pointer>) -> Vec<PointerChainValue<T>> {
+    fn pointers_to_vals(h: *mut c_void, base: usize, pointers: &[Pointer]) -> Vec<PointerChainValue<T>> {
         pointers
             .iter()
             .map(|x| PointerChainValue::new(h, base, x.clone()))
@@ -101,7 +101,7 @@ pub struct Rekordbox {
 
 
 impl Rekordbox {
-    fn new(offsets: RekordboxOffsets) -> Result<Self, ReadError> {
+    fn new(offsets: RekordboxOffsets, decks: usize) -> Result<Self, ReadError> {
         let rb = match Process::from_process_name("rekordbox.exe"){
             Ok(p) => p,
             Err(e) => return Err(ReadError{pointer: None, address: 0, error: e}),
@@ -115,12 +115,12 @@ impl Rekordbox {
         };
 
 
-        let current_bpms = Value::pointers_to_vals(h, base, offsets.current_bpm)?;
-        let playback_speeds = Value::pointers_to_vals(h, base, offsets.playback_speed)?;
-        let beat_displays = Value::pointers_to_vals(h, base, offsets.beat_display)?;
-        let bar_displays = Value::pointers_to_vals(h, base, offsets.bar_display)?;
-        let sample_positions = Value::pointers_to_vals(h, base, offsets.sample_position)?;
-        let track_infos = PointerChainValue::pointers_to_vals(h, base, offsets.track_info);
+        let current_bpms = Value::pointers_to_vals(h, base, &offsets.current_bpm[0..decks])?;
+        let playback_speeds = Value::pointers_to_vals(h, base, &offsets.playback_speed[0..decks])?;
+        let beat_displays = Value::pointers_to_vals(h, base, &offsets.beat_display[0..decks])?;
+        let bar_displays = Value::pointers_to_vals(h, base, &offsets.bar_display[0..decks])?;
+        let sample_positions = Value::pointers_to_vals(h, base, &offsets.sample_position[0..decks])?;
+        let track_infos = PointerChainValue::pointers_to_vals(h, base, &offsets.track_info[0..decks]);
 
         let deckcount = current_bpms.len();
 
@@ -326,7 +326,7 @@ impl BeatKeeper {
                     }
                 }
             }else {
-                match Rekordbox::new(offsets.clone()){
+                match Rekordbox::new(offsets.clone(), config.get_or_default("keeper.decks", 2)){
                     Ok(rb) => {
                         rekordbox = Some(rb);
                         println!();
@@ -361,9 +361,12 @@ impl BeatKeeper {
             },
             TAExternalError::ReadMemoryFailed(e) => {
                 self.logger.err(&format!("Read memory failed: {e}"));
-                self.logger.info("    Check your Rekordbox version, or just wait for Rekordbox to start fully.");
-                self.logger.info("    If the issue persists, check your configured Rekordbox version or try updating the offsets.");
-                self.logger.info("    If nothing works, wait for an update - or enable Debug in config and send this entire error message to @grufkork.");
+                self.logger.info("    Try the following:");
+                self.logger.info("    - Wait for Rekordbox to start and load a track");
+                self.logger.info("    - Ensure you have selected the correct Rekordbox version in the config");
+                self.logger.info("    - Check the number of decks in the config");
+                self.logger.info("    - Update the offsets and program");
+                self.logger.info("    If nothing works, wait for an update, or enable Debug in config and submit this entire error message on an Issue on GitHub.");
             },
             TAExternalError::WriteMemoryFailed(e) => {
                 self.logger.err(&format!("Write memory failed: {e}"));

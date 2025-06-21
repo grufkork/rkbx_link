@@ -19,7 +19,7 @@ keeper.bar_jitter_tolerance 10
 # Keep track of non-master decks. Uses more CPU, but ensures SIGNIFICANTLY smoother transitions between decks
 keeper.keep_warm true
 # Number of active decks
-keeper.decks 4
+keeper.decks 2
 
 
 

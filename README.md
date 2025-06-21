@@ -5,8 +5,17 @@ Export rock-solid timing information to sync live lights and music to your DJ se
 
 With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.1.3. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially making loads of dosh, consider extra support on my [ko-fi](https://ko-fi.com/grufkork).
 
-## Usage
-Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file to your liking (most importantly set the correct Rekordbox version!), then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. During startup all available Rekordbox versions are printed.
+## Usage & Setup
+Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file:
+- Set the Rekordbox version (`keeper.rekordbox_version`) you are using
+- Set the correct numbers of decks (`keeper.decks`) (2 or 4)
+- Enable the output modules you want to use, such as `link.enabled` or `osc.enabled`.
+Then run `rkbx_link.exe` to start the program. It will automatically connect to Rekordbox and restart if it fails. During startup all available Rekordbox versions are printed.
+
+Check the end of this document for troubleshooting tips.
+
+Eventually you can also tune:
+- `keeper.delay_compensation` to compensate for latency in your audio interface, lights or network. You can use both positive and negative values.
 
 ## Supported versions (with license)
 
@@ -45,7 +54,7 @@ Number of updates per second to send. Default is 120, which results in about 60 
 How often to read additional data from Rekordbox. Saves a bit of CPU usage if increased, but will not really affect worst-case performance. Default is `10`, meaning every 10th update will read the current track name and artist.
 
 - `keeper.delay_compensation <float>`
-Time in milliseconds to shift the output, can be both negative and positive. Used to compensate for latency in audio, network, lights etc.
+Time in milliseconds to shift the output. Used to compensate for latency in audio, network, lights etc. Can be both negative and positive to either delay the signal or compensate for latency down the chain.
 
 - `keeper.bar_jitter_tolerance <int>`
 Due to some technicalities with how values are read, dead reckoning is used to smooth out 4-beat sized jitter. After this number of updates, the jitter is no longer considered jitter and the new position is considered the correct value. Default is 10.
@@ -101,3 +110,18 @@ Where to write the setlist file. Default is `setlist.txt` in the same directory 
  - `/time` (float) Current track position in seconds
  - `/playback_speed` (float) Current playback speed/pitch, 1.0 for normal speed, 2.0 for double speed etc.
  - `/track/[1|2|3|4|master]/[title|artist|album]` (string) Title/artist/album of the current track on deck 1, 2, 3 or 4, or the master deck.
+
+# Troubleshooting
+Try the following if you run into issues. If you even after going through all these still are having problems, please [open an issue](https://github.com/grufkork/rkbx_link/issues/new) on GitHub.
+
+### The program fails to connect to Rekordbox
+- Make sure you have selected the correct Rekordbox version in the config file.
+- Check that have the correct number of decks set in the config file. Selecting 4 decks when you only have 2 will prevent the program from connecting.
+- Esnure Rekordbox is running and has a track loaded in the deck you are trying to read.
+- Try updating the program or the offsets.
+
+### Some decks are not working
+Make sure you have the correct number of decks set in the config file.
+
+### The program starts and immediately disappears
+A catastrophic failure has occurred. Open a command prompt in the directory where rkbx_link.exe is located and run `rkbx_link.exe` from there. You can now see the error in the console. You will probably want to enable debug in the config, copy the output and open an issue on GitHub.
