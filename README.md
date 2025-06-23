@@ -63,7 +63,7 @@ Due to some technicalities with how values are read, dead reckoning is used to s
 Enabling this means all decks are tracked even when not active. Enabling this increases CPU usage a bit, but means that when you switch decks the new one will already be warmed up and ready to go. Default is `true`.
 
 - `keeper.decks <int>`
-Number of decks to track, 1 to 4.
+Number of decks to track, 1 to 4. This decides how many decks are read from Rekordbox's memory. If you choose more decks than are active in Rekordbox, the program will try to read decks where the are not any and fail to connect.
 
 ## Open Sound Control (OSC)
 Outputs transport and more data over OSC. Check below for all addresses.
