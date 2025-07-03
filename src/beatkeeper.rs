@@ -244,6 +244,9 @@ pub struct BeatKeeper {
     bar_jitter_tolerance: i32, // Updates
     keep_warm: bool,
     decks: usize,
+
+    last_beat: ChangeTrackedValue<f32>,
+    last_pos: ChangeTrackedValue<i64>
 }
 
 
@@ -294,6 +297,9 @@ impl BeatKeeper {
             bar_jitter_tolerance: keeper_config.get_or_default("bar_jitter_tolerance", 10), // seconds
             keep_warm: keeper_config.get_or_default("keep_warm", true),
             decks: keeper_config.get_or_default("decks", 4),
+            last_beat: ChangeTrackedValue::new(0.0),
+            last_pos: ChangeTrackedValue::new(0),
+
 
         };
 
@@ -418,10 +424,16 @@ impl BeatKeeper {
             let bpm_changed = self.bpm.set(tracker_data.timing_data_raw.current_bpm);
             let original_bpm_changed = self.original_bpm.set(tracker_data.original_bpm);
             let playback_speed_changed = self.playback_speed.set(tracker_data.timing_data_raw.playback_speed);
+            let beat_changed = self.last_beat.set(tracker_data.beat);
+            let pos_changed = self.last_pos.set(tracker_data.timing_data_raw.sample_position);
 
             for module in &mut self.running_modules {
-                module.beat_update(tracker_data.beat);
-                module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
+                if beat_changed{
+                    module.beat_update(tracker_data.beat);
+                }
+                if pos_changed{
+                    module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
+                }
                 if bpm_changed {
                     module.bpm_changed(self.bpm.value);
                 }
