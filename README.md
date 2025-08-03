@@ -21,7 +21,7 @@ Eventually you can also tune:
 
 | Rekordbox Version  |
 | ----- |
-| `7.1.2`, `7.1.3` |
+| `7.1.4`, `7.1.3`, `7.1.2` |
 | `6.8.5` |
 
 ![logo](https://3gg.se/products/rkbx_link/logo.png "Logo")
