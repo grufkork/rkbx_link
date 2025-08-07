@@ -135,6 +135,7 @@ pub struct BeatKeeper {
     rb: Option<Rekordbox>,
     last_bar: i32,
     last_beat: i32,
+    pub bar_fraction: f32,
     pub beat_fraction: f32,
     pub last_masterdeck_index: u8,
     pub offset_micros: f32,
@@ -149,6 +150,7 @@ impl BeatKeeper {
             rb: Some(Rekordbox::new(offsets)),
             last_bar: 0,
             last_beat: 0,
+            bar_fraction: 1.,
             beat_fraction: 1.,
             last_masterdeck_index: 0,
             offset_micros: 0.,
@@ -163,6 +165,7 @@ impl BeatKeeper {
             rb: None,
             last_bar: 0,
             last_beat: 0,
+            bar_fraction: 1.,
             beat_fraction: 1.,
             last_masterdeck_index: 0,
             offset_micros: 0.,
@@ -175,6 +178,7 @@ impl BeatKeeper {
     pub fn update(&mut self, delta: Duration) {
         if let Some(rb) = &mut self.rb {
             let beats_per_micro = rb.master_bpm / 60. / 1000000.;
+            let bars_per_micro: f32 = beats_per_micro / 4.;
 
             rb.update(); // Fetch values from rkbx memory
 
@@ -185,6 +189,7 @@ impl BeatKeeper {
 
             if (rb.master_bars - self.last_bar).abs() > 0 {
                 self.last_bar = rb.master_bars;
+                self.bar_fraction = 0.;
                 self.new_bar = true;
             }
 
@@ -195,11 +200,27 @@ impl BeatKeeper {
             }
             self.beat_fraction =
                 (self.beat_fraction + delta.as_micros() as f32 * beats_per_micro) % 1.;
+            self.bar_fraction =
+                (self.bar_fraction + delta.as_micros() as f32 * bars_per_micro) % 1.;
         } else {
             self.beat_fraction = (self.beat_fraction + delta.as_secs_f32() * 130. / 60.) % 1.;
+            self.bar_fraction = (self.bar_fraction + delta.as_secs_f32() * 130. / 240. ) % 1.;
         }
     }
-    pub fn get_beat_faction(&mut self) -> f32 {
+
+    pub fn get_bar_fraction(&mut self) -> f32 {
+        (self.bar_fraction
+            + if let Some(rb) = &self.rb {
+                let bars_per_micro = rb.master_bpm / 60. / 1000000.;
+                self.offset_micros * bars_per_micro
+            } else {
+                0.
+            }
+            + 1.)
+            % 1.
+    }
+
+    pub fn get_beat_fraction(&mut self) -> f32 {
         (self.beat_fraction
             + if let Some(rb) = &self.rb {
                 let beats_per_micro = rb.master_bpm / 60. / 1000000.;
@@ -211,21 +232,27 @@ impl BeatKeeper {
             % 1.
     }
 
-    pub fn get_bpm_changed(&mut self) -> Option<f32> {
+    pub fn get_bpm(&mut self) -> Option<f32> {
         if let Some(rb) = &self.rb {
             if rb.master_bpm != self.last_bpm {
                 self.last_bpm = rb.master_bpm;
-                return Some(rb.master_bpm);
             }
+            return Some(rb.master_bpm);
         }
         None
     }
 
-    pub fn get_last_bar(&mut self) -> i32 {self.last_bar}
-
     pub fn get_new_beat(&mut self) -> bool {
         if self.new_beat {
             self.new_beat = false;
+            return true;
+        }
+        false
+    }
+
+    pub fn get_new_bar(&mut self) -> bool {
+        if self.new_bar {
+            self.new_bar = false;
             return true;
         }
         false
@@ -393,13 +420,13 @@ Available versions:",
 
         keeper.update(delta); // Get values, advance time
 
-        let bfrac = keeper.get_beat_faction();
-        let lbar: i32 = keeper.get_last_bar();
+        let beat_frac = keeper.get_beat_fraction();
+        let bar_frac: f32 = keeper.get_bar_fraction();
 
         if let Some(socket) = &socket {
             let msg = OscPacket::Message(OscMessage {
                 addr: "/beat".to_string(),
-                args: vec![OscType::Float(bfrac)],
+                args: vec![OscType::Float(beat_frac)],
             });
             let packet = encode(&msg).unwrap();
             socket.send(&packet[..]).unwrap();
@@ -408,16 +435,15 @@ Available versions:",
         if let Some(socket) = &socket {
             let msg = OscPacket::Message(OscMessage {
                 addr: "/bar".to_string(),
-                args: vec![OscType::Int(lbar)],
+                args: vec![OscType::Float(bar_frac)],
             });
             let packet = encode(&msg).unwrap();
             socket.send(&packet[..]).unwrap();
         }
 
-        if let Some(bpm) = keeper.get_bpm_changed() {
+        if let Some(bpm) = keeper.get_bpm() {
             state.set_tempo(bpm.into(), link.clock_micros());
             link.commit_app_session_state(&state);
-
             if let Some(socket) = &socket {
                 let msg = OscPacket::Message(OscMessage {
                     addr: "/bpm".to_string(),
