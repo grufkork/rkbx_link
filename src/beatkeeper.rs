@@ -273,7 +273,14 @@ impl BeatKeeper {
             logger.info(&format!(" - {}", module.pretty_name));
 
             let conf = config.reduce_to_namespace(&module.config_name);
-            running_modules.push((module.create)(conf, ScopedLogger::new(&logger.logger, &module.pretty_name)));
+            match (module.create)(conf, ScopedLogger::new(&logger.logger, &module.pretty_name)){
+                Ok(module) => {
+                    running_modules.push(module);
+                }
+                Err(()) => {
+                    logger.err(&format!("Failed to start module {}", module.pretty_name));
+                }
+            }
         }
 
         let mut keeper = BeatKeeper {

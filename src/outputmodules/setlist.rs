@@ -6,6 +6,8 @@ use crate::beatkeeper::TrackInfo;
 use crate::config::Config;
 use crate::log::ScopedLogger;
 
+use super::ModuleCreateOutput;
+
 pub struct Setlist {
     start_time: u64,
     logger: ScopedLogger,
@@ -16,7 +18,7 @@ pub struct Setlist {
 
 
 impl Setlist {
-    pub fn create(config: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
+    pub fn create(config: Config, logger: ScopedLogger) -> ModuleCreateOutput {
         let filename =config.get_or_default("filename", "setlist.txt".to_string());
 
         let mut setlist = Setlist{
@@ -24,7 +26,7 @@ impl Setlist {
             separator: config.get_or_default("separator", " - ".to_string()),
             stopped: true,
             start_time: 0,
-            logger,
+            logger: logger.clone(),
 
         };
 
@@ -39,7 +41,8 @@ impl Setlist {
             }
 
             if setlist.stopped{
-                setlist.logger.err("Failed to start: setlist file exists, but is invalid");
+                logger.err("Failed to start: setlist file exists, but is invalid");
+                return Err(());
             }
         }else{
             setlist.logger.info("No setlist file found, starting new setlist");
@@ -47,16 +50,20 @@ impl Setlist {
             match File::create(&setlist.filename) {
                 Ok(mut file) => {
                     if let Err(e) = writeln!(file, "{}", setlist.start_time){
-                        setlist.logger.err(&format!("Failed to write to setlist file: {e}"));
+                        logger.err(&format!("Failed to write to setlist file: {e}"));
+                        return Err(());
                     }else{
                         setlist.stopped = false;
                     }
                 },
-                Err(e) => setlist.logger.err(&format!("Failed to create setlist file: {e}"))
+                Err(e) => {
+                    logger.err(&format!("Failed to create setlist file: {e}"));
+                    return Err(())
+                }
             }
         }
 
-        Box::new(setlist)
+        Ok(Box::new(setlist))
     }
 
     fn get_seconds(&self) -> u64 {

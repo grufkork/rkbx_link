@@ -24,11 +24,11 @@ pub trait OutputModule {
 pub struct ModuleDefinition{
     pub config_name: String,
     pub pretty_name: String,
-    pub create: fn(Config, ScopedLogger) -> Box<dyn OutputModule>
+    pub create: fn(Config, ScopedLogger) -> ModuleCreateOutput
 }
 
 impl ModuleDefinition{
-    pub fn new(confname: &str, prettyname: &str, create: fn(Config, ScopedLogger) -> Box<dyn OutputModule>) -> Self{
+    pub fn new(confname: &str, prettyname: &str, create: fn(Config, ScopedLogger) -> ModuleCreateOutput) -> Self{
         ModuleDefinition{
             config_name: confname.to_string(), 
             pretty_name: prettyname.to_string(),
@@ -36,3 +36,5 @@ impl ModuleDefinition{
         }
     }
 }
+
+pub type ModuleCreateOutput = Result<Box<dyn OutputModule>, ()>;

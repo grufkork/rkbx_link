@@ -4,7 +4,7 @@ use rosc::{encoder::encode, OscMessage, OscPacket};
 
 use crate::{beatkeeper::TrackInfo, config::Config, log::ScopedLogger};
 
-use super::OutputModule;
+use super::{ModuleCreateOutput, OutputModule};
 
 pub struct Osc {
     socket: UdpSocket,
@@ -33,18 +33,23 @@ impl Osc {
 }
 
 impl Osc {
-    pub fn create(conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
-        let socket = UdpSocket::bind(
-            conf.get_or_default("source", "127.0.0.1:8888".to_string())
-        )
-        .unwrap();
-        socket
-            .connect(
-                conf.get_or_default("destination", "127.0.0.1:9999".to_string())
-            )
-            .unwrap();
+    pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
+        let socket = match UdpSocket::bind(conf.get_or_default("source", "127.0.0.1:8888".to_string())){
+            Ok(socket) => socket,
+            Err(e) => {
+                logger.err(&format!("Failed to open source socket: {e}"));
+                return Err(());
+            }
 
-        Box::new(Osc { socket, info_sent: false, logger })
+        };
+
+        if let Err(e) = socket.connect(conf.get_or_default("destination", "127.0.0.1:9999".to_string())) {
+            logger.err(&format!("Failed to open connection to receiver: {e}"));
+            return Err(());
+
+        }
+
+        Ok(Box::new(Osc { socket, info_sent: false, logger }))
     }
 }
 

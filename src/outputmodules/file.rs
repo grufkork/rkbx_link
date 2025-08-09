@@ -2,7 +2,7 @@ use std::fs;
 
 use crate::{config::Config, log::ScopedLogger};
 
-use super::OutputModule;
+use super::{ModuleCreateOutput, OutputModule};
 
 pub struct File{
     filename: String,
@@ -11,11 +11,11 @@ pub struct File{
 }
 
 impl File{
-    pub fn create(conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
-        Box::new(File{
+    pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
+        Ok(Box::new(File{
             filename: conf.get_or_default("filename", "current_track.txt".to_string()),
             logger
-        })
+        }))
     }
 }
 impl OutputModule for File {

@@ -2,6 +2,8 @@ use rusty_link::{AblLink, SessionState};
 
 use crate::{config::Config, log::ScopedLogger, outputmodules::OutputModule};
 
+use super::ModuleCreateOutput;
+
 
 pub struct AbletonLink {
     link: AblLink,
@@ -14,7 +16,7 @@ pub struct AbletonLink {
 }
 
 impl AbletonLink {
-    pub fn create(conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
+    pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
         let link = AblLink::new(120.);
         link.enable(false);
 
@@ -23,7 +25,7 @@ impl AbletonLink {
 
         link.enable(true);
 
-        Box::new(AbletonLink { 
+        Ok(Box::new(AbletonLink { 
             link, 
             state, 
             last_num_links: 9999, 
@@ -31,7 +33,7 @@ impl AbletonLink {
             last_beat: 0., 
             cumulative_error: 0.0, 
             cumulative_error_tolerance: conf.get_or_default("cumulative_error_tolerance", 0.05)
-        })
+        }))
     }
 }
 
