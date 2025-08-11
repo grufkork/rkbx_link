@@ -18,6 +18,7 @@ impl RekordboxOffsets {
         let mut beat_display = vec![];
         let mut bar_display = vec![];
         let mut track_info = vec![];
+        let mut anlz_file: Vec<Pointer> = vec![];
 
         while rows.peek().is_some() {
             logger.debug("Current BPM");
@@ -32,6 +33,8 @@ impl RekordboxOffsets {
             sample_position.push(Pointer::from_string(rows.next().ok_or("Missing sample position pointer")?, logger)?);
             logger.debug("Track info");
             track_info.push(Pointer::from_string(rows.next().ok_or("Missing track info pointer")?, logger)?);
+            logger.debug("ANLZ file");
+            anlz_file.push(Pointer::from_string(rows.next().ok_or("Missing ANLZ file pointer")?, logger)?);
         }
 
         Ok(RekordboxOffsets {
@@ -43,6 +46,7 @@ impl RekordboxOffsets {
             playback_speed,
             masterdeck_index,
             track_info,
+            anlz_file,
         })
     }
 
@@ -91,6 +95,7 @@ pub struct RekordboxOffsets {
     pub beat_display: Vec<Pointer>,
     pub bar_display: Vec<Pointer>,
     pub track_info: Vec<Pointer>,
+    pub anlz_file: Vec<Pointer>,
 }
 
 #[derive(PartialEq, Clone, Debug)]

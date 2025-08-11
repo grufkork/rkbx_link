@@ -95,6 +95,7 @@ pub struct Rekordbox {
     bar_displays: Vec<Value<i32>>,
     sample_positions: Vec<Value<i64>>,
     track_infos: Vec<PointerChainValue<[u8; 200]>>,
+    anlz_files: Vec<PointerChainValue<[u8; 200]>>,
     deckcount: usize,
 }
 
@@ -121,6 +122,7 @@ impl Rekordbox {
         let bar_displays = Value::pointers_to_vals(h, base, &offsets.bar_display[0..decks])?;
         let sample_positions = Value::pointers_to_vals(h, base, &offsets.sample_position[0..decks])?;
         let track_infos = PointerChainValue::pointers_to_vals(h, base, &offsets.track_info[0..decks]);
+        let anlz_files = PointerChainValue::pointers_to_vals(h, base, &offsets.anlz_file[0..decks]);
 
         let deckcount = current_bpms.len();
 
@@ -135,6 +137,7 @@ impl Rekordbox {
             masterdeck_index: masterdeck_index_val,
             deckcount,
             track_infos,
+            anlz_files,
         })
     }
 
@@ -183,6 +186,28 @@ impl Rekordbox {
         .collect()
     }
 
+fn get_anlz_files(&self) -> Result<Vec<AnlzFile>, ReadError> {
+    (0..self.deckcount)
+        .map(|i| {
+            let raw = self.anlz_files[i]
+                .read()?
+                .into_iter()
+                .take_while(|x| *x != 0x00)
+                .collect::<Vec<u8>>();
+
+            let text = String::from_utf8(raw)
+                .unwrap_or_else(|_| "ERR".to_string())
+                .trim_end_matches(|c: char| c.is_whitespace() || c.is_ascii_control()).to_string();
+
+            Ok(
+                AnlzFile {
+                    path: text,
+                }
+            )
+        })
+        .collect()
+}
+
 }
 
 #[derive(Debug)]
@@ -200,6 +225,12 @@ pub struct TrackInfo {
     pub artist: String,
     pub album: String,
 }
+// Fügen Sie diese Zeile hinzu
+#[derive(PartialEq, Default, Clone)]
+pub struct AnlzFile {
+    pub path: String,
+}
+
 impl Default for TrackInfo {
     fn default() -> Self {
         Self {
@@ -237,6 +268,7 @@ pub struct BeatKeeper {
     running_modules: Vec<Box<dyn OutputModule>>,
 
     track_infos: Vec<ChangeTrackedValue<TrackInfo>>,
+    anlz_files: Vec<ChangeTrackedValue<AnlzFile>>,
     track_trackers: Vec<TrackTracker>,
 
     logger: ScopedLogger,
@@ -283,6 +315,7 @@ impl BeatKeeper {
             original_bpm: ChangeTrackedValue::new(120.),
             playback_speed: ChangeTrackedValue::new(1.),
             track_infos: vec![ChangeTrackedValue::new(Default::default()); 4],
+            anlz_files: vec![ChangeTrackedValue::new(Default::default()); 4],
             running_modules,
             logger: logger.clone(),
             last_error: None,
@@ -466,6 +499,16 @@ impl BeatKeeper {
             }
             for module in &mut self.running_modules{
                 module.slow_update();
+            }
+        }
+
+        // Neue Schleife für die .DAT-Dateipfade
+        for (i, anlz_file) in rb.get_anlz_files()?.iter().enumerate(){
+            // `set()` aktualisiert den Wert nur, wenn er sich geändert hat
+            if self.anlz_files[i].set(anlz_file.clone()){
+                // Hier können Sie Logik hinzufügen, wenn sich der Pfad ändert
+                // z.B. eine Debug-Meldung ausgeben
+                self.logger.debug(&format!("New .DAT file path for deck {}: {}", i + 1, anlz_file.path));
             }
         }
 
