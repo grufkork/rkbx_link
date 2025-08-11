@@ -23,7 +23,7 @@ pub trait OutputModule {
     fn time_update(&mut self, _time: f32, _deck: usize){}
     fn time_update_master(&mut self, _time: f32){}
 
-    fn track_changed(&mut self, _track: TrackInfo, _deck: usize){}
+    fn track_changed(&mut self, _track: &TrackInfo, _deck: usize){}
     fn track_changed_master(&mut self, _track: &TrackInfo){}
 
     fn slow_update(&mut self) {}

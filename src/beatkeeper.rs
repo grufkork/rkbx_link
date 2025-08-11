@@ -570,20 +570,23 @@ impl BeatKeeper {
         let mut masterdeck_track_changed = false;
 
         if slow_update{
-            for (i, track) in rb.get_track_infos()?.iter().enumerate(){
-                if self.track_infos[i].set(track.clone()){
+            let mut i = 0;
+            for track in rb.get_track_infos()?{
+                if self.track_infos[i].set(track){
                     for module in &mut self.running_modules {
-                        module.track_changed(track.clone(), i);
+                        module.track_changed(&self.track_infos[i].value, i);
                     }
                     self.track_trackers[i].track_changed = true;
                     masterdeck_track_changed |= self.masterdeck_index.value == i;
                 }
+                i += 1;
             }
-            for (i, path) in rb.get_anlz_paths()?.iter().enumerate(){
-                if self.anlz_paths[i].set(path.clone()){
-                    println!("Anlz path changed: {}", path);
-                    let Ok(bytes) = std::fs::read(path) else {
-                        println!("Failed to read anlz file: {}", path);
+            let mut i = 0;
+            for path in rb.get_anlz_paths()?{
+                if self.anlz_paths[i].set(path){
+                    println!("Anlz path changed: {}", &self.anlz_paths[i].value);
+                    let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value) else {
+                        println!("Failed to read anlz file: {}", &self.anlz_paths[i].value);
                         continue;
                     };
                     let mut reader = Cursor::new(bytes);
@@ -603,6 +606,7 @@ impl BeatKeeper {
 
 
                 }
+                i += 1;
             }
             for module in &mut self.running_modules{
                 module.slow_update();

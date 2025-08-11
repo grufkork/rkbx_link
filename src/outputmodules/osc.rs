@@ -78,7 +78,7 @@ impl OutputModule for Osc {
     } 
     
 
-    fn track_changed(&mut self, track: TrackInfo, deck: usize){
+    fn track_changed(&mut self, track: &TrackInfo, deck: usize){
         self.send_string(&format!("/track/{deck}/title"), &track.title);
         self.send_string(&format!("/track/{deck}/artist"), &track.artist);
         self.send_string(&format!("/track/{deck}/album"), &track.album);
