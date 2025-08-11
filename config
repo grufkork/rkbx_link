@@ -6,7 +6,7 @@ app.auto_update false
 app.debug false
 
 # Rekordbox version to target
-keeper.rekordbox_version 7.1.3
+keeper.rekordbox_version 7.1.4
 # How often to fetch song position in Hz
 keeper.update_rate 120
 # Every nth update, perform a slow update

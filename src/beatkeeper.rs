@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::io::Cursor;
 use std::thread;
 use crate::config::Config;
 use crate::log::ScopedLogger;
@@ -6,10 +7,14 @@ use crate::outputmodules::ModuleDefinition;
 use crate::outputmodules::OutputModule;
 use std::{marker::PhantomData, time::Duration};
 use crate::offsets::Pointer;
+use rekordcrate::anlz::Beat;
 use toy_arms::external::error::TAExternalError;
 use toy_arms::external::{read, Process};
+use winapi::shared::ntstatus::STATUS_GRAPHICS_INSUFFICIENT_DMA_BUFFER;
 use crate::RekordboxOffsets;
 use winapi::ctypes::c_void;
+use rekordcrate::anlz::{self, BeatGrid};
+use binrw::BinRead;
 
 #[derive(PartialEq, Clone)]
 struct ReadError {
@@ -95,6 +100,7 @@ pub struct Rekordbox {
     bar_displays: Vec<Value<i32>>,
     sample_positions: Vec<Value<i64>>,
     track_infos: Vec<PointerChainValue<[u8; 200]>>,
+    anlz_paths: Vec<PointerChainValue<[u8; 500]>>,
     deckcount: usize,
 }
 
@@ -121,6 +127,7 @@ impl Rekordbox {
         let bar_displays = Value::pointers_to_vals(h, base, &offsets.bar_display[0..decks])?;
         let sample_positions = Value::pointers_to_vals(h, base, &offsets.sample_position[0..decks])?;
         let track_infos = PointerChainValue::pointers_to_vals(h, base, &offsets.track_info[0..decks]);
+        let anlz_paths = PointerChainValue::pointers_to_vals(h, base, &offsets.anlz_path[0..decks]);
 
         let deckcount = current_bpms.len();
 
@@ -135,6 +142,7 @@ impl Rekordbox {
             masterdeck_index: masterdeck_index_val,
             deckcount,
             track_infos,
+            anlz_paths
         })
     }
 
@@ -167,11 +175,12 @@ impl Rekordbox {
                     .into_iter()
                     .take_while(|x| *x != 0x00)
                     .collect::<Vec<u8>>();
-                let text = String::from_utf8(raw).unwrap_or("ERR".to_string());
+                let text = String::from_utf8(raw).unwrap_or_else(|_| "ERR".to_string());
                 let mut lines = text
                     .lines()
                     .map(|x| x.split_once(": ").unwrap_or(("", "")).1)
                     .map(|x| x.to_string());
+
                 Ok(
                     TrackInfo {
                         title: lines.next().unwrap_or("".to_string()),
@@ -179,6 +188,19 @@ impl Rekordbox {
                         album: lines.next().unwrap_or("".to_string()),
                     }
                 )
+            })
+        .collect()
+    }
+
+    fn get_anlz_paths(&self) -> Result<Vec<String>, ReadError> {
+        (0..self.deckcount)
+            .map(|i| {
+                let raw = self.anlz_paths[i]
+                    .read()?
+                    .into_iter()
+                    .take_while(|x| *x != 0x00)
+                    .collect::<Vec<u8>>();
+                Ok(String::from_utf8(raw).unwrap_or_else(|_| "ERR".to_string()))
             })
         .collect()
     }
@@ -239,6 +261,8 @@ pub struct BeatKeeper {
     track_infos: Vec<ChangeTrackedValue<TrackInfo>>,
     track_trackers: Vec<TrackTracker>,
 
+    anlz_paths: Vec<ChangeTrackedValue<String>>,
+
     logger: ScopedLogger,
     last_error: Option<ReadError>,
     bar_jitter_tolerance: i32, // Updates
@@ -246,9 +270,33 @@ pub struct BeatKeeper {
     decks: usize,
 
     last_beat: ChangeTrackedValue<f32>,
-    last_pos: ChangeTrackedValue<i64>
+    last_pos: ChangeTrackedValue<i64>,
+
+    td_trackers: Vec<TrackingDataTracker>,
+    master_td_tracker: TrackingDataTracker,
+
+    beatgrids: Vec<Option<BeatGrid>>
 }
 
+struct TrackingDataTracker {
+    bpm_changed: ChangeTrackedValue<f32>,
+    original_bpm_changed: ChangeTrackedValue<f32>,
+    playback_speed_changed: ChangeTrackedValue<f32>,
+    beat_changed: ChangeTrackedValue<f32>,
+    pos_changed: ChangeTrackedValue<i64>,
+}
+
+impl TrackingDataTracker {
+    fn new() -> Self {
+        Self {
+            bpm_changed: ChangeTrackedValue::new(0.),
+            original_bpm_changed: ChangeTrackedValue::new(0.),
+            playback_speed_changed: ChangeTrackedValue::new(0.),
+            beat_changed: ChangeTrackedValue::new(0.),
+            pos_changed: ChangeTrackedValue::new(0),
+        }
+    }
+}
 
 
 impl BeatKeeper {
@@ -306,8 +354,10 @@ impl BeatKeeper {
             decks: keeper_config.get_or_default("decks", 4),
             last_beat: ChangeTrackedValue::new(0.0),
             last_pos: ChangeTrackedValue::new(0),
-
-
+            td_trackers: (0..4).map(|_| TrackingDataTracker::new()).collect(),
+            master_td_tracker: TrackingDataTracker::new(),
+            anlz_paths: vec![ChangeTrackedValue::new("".to_string()); 4],
+            beatgrids: (0..4).map(|_| None).collect(),
         };
 
         let mut rekordbox = None;
@@ -328,8 +378,8 @@ impl BeatKeeper {
                     
                     rekordbox = None;
                     logger.err("Connection to Rekordbox lost");
-                    // thread::sleep(Duration::from_secs(3));
-                    logger.info("Reconnecting...");
+                    logger.info("Reconnecting in 3s...");
+                    thread::sleep(Duration::from_secs(3));
 
                 }else{
                     n = (n + 1) % slow_update_denominator;
@@ -401,60 +451,118 @@ impl BeatKeeper {
             return Ok(()); // No master deck selected - rekordbox is not initialised
         }
 
-        let mut tracker_data = None;
+        // let mut tracker_data = None;
 
-        for (i, tracker) in self.track_trackers[0..self.decks].iter_mut().enumerate() {
-            // for (i, tracker) in trackers.iter_mut().enumerate() {
-            if i == self.masterdeck_index.value || self.keep_warm{
+        for (i, (tracker, td_tracker)) in (self.track_trackers[0..self.decks]).iter_mut().zip(self.td_trackers[0..self.decks].iter_mut()).enumerate() {
+
+
+            let is_master = i == self.masterdeck_index.value;
+            if is_master | self.keep_warm{
                 let res = tracker.update(rb, self.bar_jitter_tolerance, self.offset_samples, i, delta);
+                let Ok(res) = res else {
+                    continue;
+                };
 
-                if i == self.masterdeck_index.value{
-                    match res {
-                        Ok(res) => {
-                            tracker_data = Some(res);
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        },
+                let bpm_changed = td_tracker.bpm_changed.set(res.timing_data_raw.current_bpm);
+                let original_bpm_changed = td_tracker.original_bpm_changed.set(res.original_bpm);
+                let playback_speed_changed = td_tracker.playback_speed_changed.set(res.timing_data_raw.playback_speed);
+                let beat_changed = td_tracker.beat_changed.set(res.beat);
+                let pos_changed = td_tracker.pos_changed.set(res.timing_data_raw.sample_position);
+                
+
+
+                for module in &mut self.running_modules {
+                    if beat_changed{
+                        module.beat_update(res.beat, i);
+                    }
+                    if pos_changed{
+                        module.time_update(res.timing_data_raw.sample_position as f32 / 44100., i);
+                    }
+                    if bpm_changed {
+                        module.bpm_changed(res.timing_data_raw.current_bpm, i);
+                    }
+                    if original_bpm_changed {
+                        module.original_bpm_changed(res.original_bpm, i);
+                    }
+
+                    if playback_speed_changed {
+                        module.playback_speed_changed(res.timing_data_raw.playback_speed, i);
                     }
                 }
+
+                if is_master {
+                    let bpm_changed = self.master_td_tracker.bpm_changed.set(res.timing_data_raw.current_bpm);
+                    let original_bpm_changed = self.master_td_tracker.original_bpm_changed.set(res.original_bpm);
+                    let playback_speed_changed = self.master_td_tracker.playback_speed_changed.set(res.timing_data_raw.playback_speed);
+                    let beat_changed = self.master_td_tracker.beat_changed.set(res.beat);
+                    let pos_changed = self.master_td_tracker.pos_changed.set(res.timing_data_raw.sample_position);
+
+                    for module in &mut self.running_modules {
+                        if beat_changed{
+                            module.beat_update_master(res.beat);
+                        }
+                        if pos_changed{
+                            module.time_update_master(res.timing_data_raw.sample_position as f32 / 44100.);
+                        }
+                        if bpm_changed {
+                            module.bpm_changed_master(res.timing_data_raw.current_bpm);
+                        }
+                        if original_bpm_changed {
+                            module.original_bpm_changed_master(res.original_bpm);
+                        }
+                        if playback_speed_changed {
+                            module.playback_speed_changed_master(res.timing_data_raw.playback_speed);
+                        }
+                    }
+                }
+
+                // if i == self.masterdeck_index.value{
+                //     match res {
+                //         Ok(res) => {
+                //             tracker_data = Some(res);
+                //         }
+                //         Err(e) => {
+                //             return Err(e);
+                //         },
+                //     }
+                // }
             }
         }
 
-        if let Some(tracker_data) = tracker_data {
-            // for _ in 0..((tracker_data.beat * 10. % (16. * 10.)) as usize){
-            //     print!("#");
-            // }
-            // println!();
-            // println!("{}", tracker_data.beat);
-
-            let bpm_changed = self.bpm.set(tracker_data.timing_data_raw.current_bpm);
-            let original_bpm_changed = self.original_bpm.set(tracker_data.original_bpm);
-            let playback_speed_changed = self.playback_speed.set(tracker_data.timing_data_raw.playback_speed);
-            let beat_changed = self.last_beat.set(tracker_data.beat);
-            let pos_changed = self.last_pos.set(tracker_data.timing_data_raw.sample_position);
-
-            for module in &mut self.running_modules {
-                if beat_changed{
-                    module.beat_update(tracker_data.beat);
-                }
-                if pos_changed{
-                    module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
-                }
-                if bpm_changed {
-                    module.bpm_changed(self.bpm.value);
-                }
-                if original_bpm_changed {
-                    module.original_bpm_changed(self.original_bpm.value);
-                }
-
-                if playback_speed_changed {
-                    module.playback_speed_changed(self.playback_speed.value);
-                }
-            }
-        }else{
-            println!("ERRRRR");
-        }
+        // if let Some(tracker_data) = tracker_data {
+        //     // for _ in 0..((tracker_data.beat * 10. % (16. * 10.)) as usize){
+        //     //     print!("#");
+        //     // }
+        //     // println!();
+        //     // println!("{}", tracker_data.beat);
+        //
+        //     let bpm_changed = self.bpm.set(tracker_data.timing_data_raw.current_bpm);
+        //     let original_bpm_changed = self.original_bpm.set(tracker_data.original_bpm);
+        //     let playback_speed_changed = self.playback_speed.set(tracker_data.timing_data_raw.playback_speed);
+        //     let beat_changed = self.last_beat.set(tracker_data.beat);
+        //     let pos_changed = self.last_pos.set(tracker_data.timing_data_raw.sample_position);
+        //
+        //     for module in &mut self.running_modules {
+        //         if beat_changed{
+        //             module.beat_update(tracker_data.beat);
+        //         }
+        //         if pos_changed{
+        //             module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
+        //         }
+        //         if bpm_changed {
+        //             module.bpm_changed(self.bpm.value);
+        //         }
+        //         if original_bpm_changed {
+        //             module.original_bpm_changed(self.original_bpm.value);
+        //         }
+        //
+        //         if playback_speed_changed {
+        //             module.playback_speed_changed(self.playback_speed.value);
+        //         }
+        //     }
+        // }else{
+        //     println!("ERRRRR");
+        // }
 
 
 
@@ -471,6 +579,31 @@ impl BeatKeeper {
                     masterdeck_track_changed |= self.masterdeck_index.value == i;
                 }
             }
+            for (i, path) in rb.get_anlz_paths()?.iter().enumerate(){
+                if self.anlz_paths[i].set(path.clone()){
+                    println!("Anlz path changed: {}", path);
+                    let Ok(bytes) = std::fs::read(path) else {
+                        println!("Failed to read anlz file: {}", path);
+                        continue;
+                    };
+                    let mut reader = Cursor::new(bytes);
+                    let anlz = rekordcrate::anlz::ANLZ::read(&mut reader).unwrap();
+                    for section in anlz.sections {
+                        match section.content{
+                            anlz::Content::BeatGrid(grid) => {
+                                self.track_trackers[i].beatgrid = Some(grid);
+                            }
+                            anlz::Content::SongStructure(phrases) => {
+
+                            }
+                            _ => ()
+
+                        }
+                    }
+
+
+                }
+            }
             for module in &mut self.running_modules{
                 module.slow_update();
             }
@@ -480,7 +613,7 @@ impl BeatKeeper {
             let track = &self.track_infos[self.masterdeck_index.value].value;
             self.logger.debug(&format!("Master track changed: {track:?}"));
             for module in &mut self.running_modules {
-                module.master_track_changed(track);
+                module.track_changed_master(track);
             }
 
         }
@@ -506,6 +639,7 @@ impl BeatKeeper {
         measurements_since_bar_jump: i32, // Loops since a bar-sized jump in beat was detected
         last_calculated_beat: f32, // Previous total calculated beat
         track_changed: bool, // External flag to indicate that the track has changed
+        beatgrid: Option<BeatGrid>
     }
 
     impl TrackTracker {
@@ -520,6 +654,7 @@ impl BeatKeeper {
                 measurements_since_bar_jump: 0,
                 last_calculated_beat: 0.0,
                 track_changed: false,
+                beatgrid: None,
             }
         }
 
@@ -643,6 +778,31 @@ impl BeatKeeper {
             if beat.is_nan(){
                 beat = 0.0;
             }
+
+            let mut beat = 0.0;
+            let mut original_bpm = 120.0;
+
+            let time_now = (td.sample_position + offset_samples) as f32 / 44100.;
+            if let Some(grid) = &self.beatgrid{
+                let mut idx: usize = 0;
+                for gridbeat in grid.beats.iter() {
+                    if gridbeat.time as f32 / 1000. >= time_now {
+                        break;
+                    }
+                    idx += 1;
+                }
+                idx = idx.saturating_sub(1);
+                let gridbeat = &grid.beats[idx];
+                // println!("{} - {}", time, time_now);
+                let remainder = time_now - gridbeat.time as f32 / 1000.;
+                original_bpm = gridbeat.tempo as f32 / 100.0;
+                let spb = 1. / (gridbeat.tempo as f32 / 100. / 60.0);
+
+                let b = (gridbeat.beat_number + 3) % 4;
+                // println!("{b} {idx}");
+                beat = b as f32 + remainder / spb;
+            }
+
 
             Ok(TrackTrackerResult {
                 beat,
