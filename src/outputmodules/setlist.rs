@@ -83,7 +83,7 @@ impl Setlist {
 }
 
 impl OutputModule for Setlist {
-    fn master_track_changed(&mut self, track: &TrackInfo) {
+    fn track_changed_master(&mut self, track: &TrackInfo) {
         if self.stopped {
             return;
         }

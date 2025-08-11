@@ -8,14 +8,23 @@ pub mod file;
 pub mod setlist;
 
 pub trait OutputModule {
-    fn bpm_changed(&mut self, _bpm: f32){}
-    fn original_bpm_changed(&mut self, _bpm: f32){}
-    fn playback_speed_changed(&mut self, _speed: f32){}
-    fn beat_update(&mut self, _beat: f32){}
-    fn time_update(&mut self, _time: f32){}
+    fn bpm_changed(&mut self, _bpm: f32, _deck: usize){}
+    fn bpm_changed_master(&mut self, _bpm: f32){}
+
+    fn original_bpm_changed(&mut self, _bpm: f32, _deck: usize){}
+    fn original_bpm_changed_master(&mut self, _bpm: f32){}
+
+    fn playback_speed_changed(&mut self, _speed: f32, _deck: usize){}
+    fn playback_speed_changed_master(&mut self, _speed: f32){}
+
+    fn beat_update(&mut self, _beat: f32, _deck: usize){}
+    fn beat_update_master(&mut self, _beat: f32){}
+
+    fn time_update(&mut self, _time: f32, _deck: usize){}
+    fn time_update_master(&mut self, _time: f32){}
 
     fn track_changed(&mut self, _track: TrackInfo, _deck: usize){}
-    fn master_track_changed(&mut self, _track: &TrackInfo){}
+    fn track_changed_master(&mut self, _track: &TrackInfo){}
 
     fn slow_update(&mut self) {}
 }

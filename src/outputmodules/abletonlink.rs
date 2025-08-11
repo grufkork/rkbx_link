@@ -38,12 +38,12 @@ impl AbletonLink {
 }
 
 impl OutputModule for AbletonLink {
-    fn bpm_changed(&mut self, bpm: f32){
+    fn bpm_changed_master(&mut self, bpm: f32){
         self.state.set_tempo(bpm as f64, self.link.clock_micros());
         self.link.commit_app_session_state(&self.state);
     }
 
-    fn beat_update(&mut self, beat: f32){
+    fn beat_update_master(&mut self, beat: f32) {
         // Let link free-wheel if not playing
         if self.last_beat == beat {
             return; 

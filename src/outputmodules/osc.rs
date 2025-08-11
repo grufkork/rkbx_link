@@ -54,27 +54,27 @@ impl Osc {
 }
 
 impl OutputModule for Osc {
-    fn bpm_changed(&mut self, bpm: f32){
-        self.send_float("/bpm/current", bpm);
+    fn bpm_changed_master(&mut self, bpm: f32){
+        self.send_float("/bpm/master/current", bpm);
     }
 
-    fn original_bpm_changed(&mut self, bpm: f32){
-        self.send_float("/bpm/original", bpm);
+    fn original_bpm_changed_master(&mut self, bpm: f32) {
+        self.send_float("/bpm/master/original", bpm);
     }
 
-    fn beat_update(&mut self, beat: f32){
-        self.send_float("/beat", beat);
-        self.send_float("/beat/1", beat % 1.);
-        self.send_float("/beat/2", (beat % 2.) / 2.);
-        self.send_float("/beat/4", (beat % 4.) / 4.);
+    fn beat_update_master(&mut self, beat: f32){
+        self.send_float("/beat/master", beat);
+        self.send_float("/beat/master/div1", beat % 1.);
+        self.send_float("/beat/master/div2", (beat % 2.) / 2.);
+        self.send_float("/beat/master/div4", (beat % 4.) / 4.);
     }
 
-    fn time_update(&mut self, time: f32){
-        self.send_float("/time", time);
+    fn time_update_master(&mut self, time: f32) {
+        self.send_float("/time/master", time);
     }
     
-    fn playback_speed_changed(&mut self, speed: f32) {
-        self.send_float("/playback_speed", speed);
+    fn playback_speed_changed_master(&mut self, speed: f32) {
+        self.send_float("/playback_speed/master", speed);
     } 
     
 
@@ -84,7 +84,7 @@ impl OutputModule for Osc {
         self.send_string(&format!("/track/{deck}/album"), &track.album);
     }
 
-    fn master_track_changed(&mut self, track: &TrackInfo){
+    fn track_changed_master(&mut self, track: &TrackInfo){
         self.send_string("/track/master/title", &track.title);
         self.send_string("/track/master/artist", &track.artist);
         self.send_string("/track/master/album", &track.album);
