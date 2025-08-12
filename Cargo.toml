@@ -17,6 +17,7 @@ reqwest = {version = "0.12.7", features = ["blocking"]}
 termcolor = "1.4.1"
 binrw = "0.14.0"
 rekordcrate = "0.3.0"
+notify = "8.2.0"
 
 [features]
 dev = []

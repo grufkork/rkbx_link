@@ -5,8 +5,10 @@ use crate::outputmodules::ModuleDefinition;
 use crate::outputmodules::OutputModule;
 use crate::RekordboxOffsets;
 use binrw::BinRead;
+use notify::Watcher;
 use rekordcrate::anlz::{self, BeatGrid};
 use std::io::Cursor;
+use std::sync::mpsc;
 use std::thread;
 use std::{marker::PhantomData, time::Duration};
 use toy_arms::external::error::TAExternalError;
@@ -257,6 +259,8 @@ pub struct BeatKeeper {
     track_trackers: Vec<TrackTracker>,
 
     anlz_paths: Vec<ChangeTrackedValue<String>>,
+    watcher: notify::RecommendedWatcher,
+    watcher_rx: mpsc::Receiver<notify::Result<notify::Event>>,
 
     logger: ScopedLogger,
     last_error: Option<ReadError>,
@@ -317,6 +321,15 @@ impl BeatKeeper {
             }
         }
 
+        let (watcher_tx, watcher_rx) = mpsc::channel();
+        let watcher = match notify::recommended_watcher(watcher_tx){
+            Ok(w) => w,
+            Err(e) => {
+                logger.err(&format!("Failed to create watcher: {e}"));
+                return;
+            }
+        };
+
         let mut keeper = BeatKeeper {
             masterdeck_index: ChangeTrackedValue::new(0),
             offset_samples: (keeper_config.get_or_default("delay_compensation", 0.) * 44100. / 1000.) as i64,
@@ -330,6 +343,8 @@ impl BeatKeeper {
             td_trackers: (0..4).map(|_| TrackingDataTracker::new()).collect(),
             master_td_tracker: TrackingDataTracker::new(),
             anlz_paths: vec![ChangeTrackedValue::new("".to_string()); 4],
+            watcher,
+            watcher_rx
         };
 
         let mut rekordbox = None;
@@ -492,54 +507,9 @@ impl BeatKeeper {
                         }
                     }
                 }
-
-                // if i == self.masterdeck_index.value{
-                //     match res {
-                //         Ok(res) => {
-                //             tracker_data = Some(res);
-                //         }
-                //         Err(e) => {
-                //             return Err(e);
-                //         },
-                //     }
-                // }
             }
         }
 
-        // if let Some(tracker_data) = tracker_data {
-        //     // for _ in 0..((tracker_data.beat * 10. % (16. * 10.)) as usize){
-        //     //     print!("#");
-        //     // }
-        //     // println!();
-        //     // println!("{}", tracker_data.beat);
-        //
-        //     let bpm_changed = self.bpm.set(tracker_data.timing_data_raw.current_bpm);
-        //     let original_bpm_changed = self.original_bpm.set(tracker_data.original_bpm);
-        //     let playback_speed_changed = self.playback_speed.set(tracker_data.timing_data_raw.playback_speed);
-        //     let beat_changed = self.last_beat.set(tracker_data.beat);
-        //     let pos_changed = self.last_pos.set(tracker_data.timing_data_raw.sample_position);
-        //
-        //     for module in &mut self.running_modules {
-        //         if beat_changed{
-        //             module.beat_update(tracker_data.beat);
-        //         }
-        //         if pos_changed{
-        //             module.time_update(tracker_data.timing_data_raw.sample_position as f32 / 44100.);
-        //         }
-        //         if bpm_changed {
-        //             module.bpm_changed(self.bpm.value);
-        //         }
-        //         if original_bpm_changed {
-        //             module.original_bpm_changed(self.original_bpm.value);
-        //         }
-        //
-        //         if playback_speed_changed {
-        //             module.playback_speed_changed(self.playback_speed.value);
-        //         }
-        //     }
-        // }else{
-        //     println!("ERRRRR");
-        // }
 
         let mut masterdeck_track_changed = false;
 
@@ -553,9 +523,43 @@ impl BeatKeeper {
                     masterdeck_track_changed |= self.masterdeck_index.value == i;
                 }
             }
+
+
+            let mut anlz_file_updates = [false; 4];
+            while let Ok(u) = self.watcher_rx.try_recv(){
+                match u {
+                    Ok(event) => {
+                        if let Some(path) = event.paths.first() {
+                            let path = path.to_string_lossy().replace("\\", "/");
+                            if let Some(i) = self.anlz_paths.iter().position(|x| x.value == path) {
+                                anlz_file_updates[i] = true;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("Watcher error: {e}");
+                    }
+                }
+            }
+
             for (i, path) in rb.get_anlz_paths()?.into_iter().enumerate() {
-                if self.anlz_paths[i].set(path) {
-                    println!("Anlz path changed: {}", &self.anlz_paths[i].value);
+                if self.anlz_paths[i].value != path || anlz_file_updates[i] {
+                    // println!("Reloading {i}");
+                    if self.anlz_paths[i].value != path {
+                        // println!("Anlz path changed: {}", &self.anlz_paths[i].value);
+
+                        self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
+                            println!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e);
+                        });
+                        println!("Unset watcher: {}", &self.anlz_paths[i].value);
+                        self.anlz_paths[i].set(path);
+                        self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
+                            println!("Failed to watch path {}: {}", &self.anlz_paths[i].value, e);
+                        });
+                        // println!("Set watcjer: {}", &self.anlz_paths[i].value);
+                    }
+
+                    // TODO there's probably loads of things that can go wrong here
                     let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value) else {
                         println!("Failed to read anlz file: {}", &self.anlz_paths[i].value);
                         continue;
@@ -598,7 +602,7 @@ struct TrackTrackerResult {
 }
 
 struct TrackTracker {
-    track_changed: bool,              // External flag to indicate that the track has changed
+    track_changed: bool, // External flag to indicate that the track has changed
     beatgrid: Option<BeatGrid>,
 }
 
