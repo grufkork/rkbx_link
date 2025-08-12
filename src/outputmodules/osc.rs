@@ -78,10 +78,6 @@ impl OutputModule for Osc {
         self.send_float("/time/master", time);
     }
 
-    fn playback_speed_changed_master(&mut self, speed: f32) {
-        self.send_float("/playback_speed/master", speed);
-    }
-
     fn track_changed(&mut self, track: &TrackInfo, deck: usize) {
         self.send_string(&format!("/track/{deck}/title"), &track.title);
         self.send_string(&format!("/track/{deck}/artist"), &track.artist);

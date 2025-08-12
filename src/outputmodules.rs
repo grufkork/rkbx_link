@@ -14,9 +14,6 @@ pub trait OutputModule {
     fn original_bpm_changed(&mut self, _bpm: f32, _deck: usize) {}
     fn original_bpm_changed_master(&mut self, _bpm: f32) {}
 
-    fn playback_speed_changed(&mut self, _speed: f32, _deck: usize) {}
-    fn playback_speed_changed_master(&mut self, _speed: f32) {}
-
     fn beat_update(&mut self, _beat: f32, _deck: usize) {}
     fn beat_update_master(&mut self, _beat: f32) {}
 

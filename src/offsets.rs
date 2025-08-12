@@ -17,9 +17,6 @@ impl RekordboxOffsets {
 
         let mut sample_position = vec![];
         let mut current_bpm = vec![];
-        let mut playback_speed = vec![];
-        let mut beat_display = vec![];
-        let mut bar_display = vec![];
         let mut track_info = vec![];
         let mut anlz_path = vec![];
 
@@ -27,21 +24,6 @@ impl RekordboxOffsets {
             logger.debug("Current BPM");
             current_bpm.push(Pointer::from_string(
                 rows.next().ok_or("Missing BPM pointer")?,
-                logger,
-            )?);
-            logger.debug("Beat display");
-            beat_display.push(Pointer::from_string(
-                rows.next().ok_or("Missing beat pointer")?,
-                logger,
-            )?);
-            logger.debug("Bar display");
-            bar_display.push(Pointer::from_string(
-                rows.next().ok_or("Missing bar pointer")?,
-                logger,
-            )?);
-            logger.debug("Playback speed");
-            playback_speed.push(Pointer::from_string(
-                rows.next().ok_or("Missing pitch pointer")?,
                 logger,
             )?);
             logger.debug("Sample position");
@@ -63,11 +45,8 @@ impl RekordboxOffsets {
 
         Ok(RekordboxOffsets {
             rbversion: rb_version,
-            beat_display,
-            bar_display,
             sample_position,
             current_bpm,
-            playback_speed,
             masterdeck_index,
             track_info,
             anlz_path,
@@ -118,9 +97,6 @@ pub struct RekordboxOffsets {
     pub masterdeck_index: Pointer,
     pub sample_position: Vec<Pointer>,
     pub current_bpm: Vec<Pointer>,
-    pub playback_speed: Vec<Pointer>,
-    pub beat_display: Vec<Pointer>,
-    pub bar_display: Vec<Pointer>,
     pub track_info: Vec<Pointer>,
     pub anlz_path: Vec<Pointer>,
 }
