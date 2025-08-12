@@ -4,7 +4,6 @@ use crate::{config::Config, log::ScopedLogger, outputmodules::OutputModule};
 
 use super::ModuleCreateOutput;
 
-
 pub struct AbletonLink {
     link: AblLink,
     state: SessionState,
@@ -25,20 +24,20 @@ impl AbletonLink {
 
         link.enable(true);
 
-        Ok(Box::new(AbletonLink { 
-            link, 
-            state, 
-            last_num_links: 9999, 
-            logger, 
-            last_beat: 0., 
-            cumulative_error: 0.0, 
-            cumulative_error_tolerance: conf.get_or_default("cumulative_error_tolerance", 0.05)
+        Ok(Box::new(AbletonLink {
+            link,
+            state,
+            last_num_links: 9999,
+            logger,
+            last_beat: 0.,
+            cumulative_error: 0.0,
+            cumulative_error_tolerance: conf.get_or_default("cumulative_error_tolerance", 0.05),
         }))
     }
 }
 
 impl OutputModule for AbletonLink {
-    fn bpm_changed_master(&mut self, bpm: f32){
+    fn bpm_changed_master(&mut self, bpm: f32) {
         self.state.set_tempo(bpm as f64, self.link.clock_micros());
         self.link.commit_app_session_state(&self.state);
     }
@@ -46,20 +45,20 @@ impl OutputModule for AbletonLink {
     fn beat_update_master(&mut self, beat: f32) {
         // Let link free-wheel if not playing
         if self.last_beat == beat {
-            return; 
+            return;
         }
         // let target_beat = (beat as f64) % 4.;
-        
-        
+
         let link_beat = self.state.beat_at_time(self.link.clock_micros(), 4.0) as f32;
-        let diff = (link_beat - beat + 2.0) % 4.0 -2.0;
+        let diff = (link_beat - beat + 2.0) % 4.0 - 2.0;
         // println!("{diff}");
         self.cumulative_error += diff;
         // println!("cumerr {}", self.cumulative_error);
         if self.cumulative_error.abs() > self.cumulative_error_tolerance {
             self.cumulative_error = 0.0;
             // println!("SET -----------------------------------------------------");
-            self.state.force_beat_at_time(beat.into(), self.link.clock_micros() as u64, 4.);
+            self.state
+                .force_beat_at_time(beat.into(), self.link.clock_micros() as u64, 4.);
             self.link.commit_app_session_state(&self.state);
         }
         self.last_beat = beat;
@@ -71,7 +70,5 @@ impl OutputModule for AbletonLink {
             self.last_num_links = num_links;
             self.logger.info(&format!("Link peers: {num_links}"));
         }
-    } 
+    }
 }
-
-

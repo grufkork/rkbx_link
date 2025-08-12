@@ -10,7 +10,10 @@ impl RekordboxOffsets {
         let rb_version = rows.next().ok_or("No lines left")?.to_string();
 
         logger.debug("Masterdeck index");
-        let masterdeck_index = Pointer::from_string(rows.next().ok_or("Missing masterdeck index pointer")?, logger)?;
+        let masterdeck_index = Pointer::from_string(
+            rows.next().ok_or("Missing masterdeck index pointer")?,
+            logger,
+        )?;
 
         let mut sample_position = vec![];
         let mut current_bpm = vec![];
@@ -22,19 +25,40 @@ impl RekordboxOffsets {
 
         while rows.peek().is_some() {
             logger.debug("Current BPM");
-            current_bpm.push(Pointer::from_string(rows.next().ok_or("Missing BPM pointer")?, logger)?);
+            current_bpm.push(Pointer::from_string(
+                rows.next().ok_or("Missing BPM pointer")?,
+                logger,
+            )?);
             logger.debug("Beat display");
-            beat_display.push(Pointer::from_string(rows.next().ok_or("Missing beat pointer")?, logger)?);
+            beat_display.push(Pointer::from_string(
+                rows.next().ok_or("Missing beat pointer")?,
+                logger,
+            )?);
             logger.debug("Bar display");
-            bar_display.push(Pointer::from_string(rows.next().ok_or("Missing bar pointer")?, logger)?);
+            bar_display.push(Pointer::from_string(
+                rows.next().ok_or("Missing bar pointer")?,
+                logger,
+            )?);
             logger.debug("Playback speed");
-            playback_speed.push(Pointer::from_string(rows.next().ok_or("Missing pitch pointer")?, logger)?);
+            playback_speed.push(Pointer::from_string(
+                rows.next().ok_or("Missing pitch pointer")?,
+                logger,
+            )?);
             logger.debug("Sample position");
-            sample_position.push(Pointer::from_string(rows.next().ok_or("Missing sample position pointer")?, logger)?);
+            sample_position.push(Pointer::from_string(
+                rows.next().ok_or("Missing sample position pointer")?,
+                logger,
+            )?);
             logger.debug("Track info");
-            track_info.push(Pointer::from_string(rows.next().ok_or("Missing track info pointer")?, logger)?);
+            track_info.push(Pointer::from_string(
+                rows.next().ok_or("Missing track info pointer")?,
+                logger,
+            )?);
             logger.debug("ANLZ path");
-            anlz_path.push(Pointer::from_string(rows.next().ok_or("Missing ANLZ path pointer")?, logger)?);
+            anlz_path.push(Pointer::from_string(
+                rows.next().ok_or("Missing ANLZ path pointer")?,
+                logger,
+            )?);
         }
 
         Ok(RekordboxOffsets {
@@ -46,11 +70,14 @@ impl RekordboxOffsets {
             playback_speed,
             masterdeck_index,
             track_info,
-            anlz_path
+            anlz_path,
         })
     }
 
-    pub fn from_file(name: &str, logger: ScopedLogger) -> Result<HashMap<String, RekordboxOffsets>, String> {
+    pub fn from_file(
+        name: &str,
+        logger: ScopedLogger,
+    ) -> Result<HashMap<String, RekordboxOffsets>, String> {
         let Ok(mut file) = File::open(name) else {
             return Err(format!("Could not open offset file {name}"));
         };
@@ -95,7 +122,7 @@ pub struct RekordboxOffsets {
     pub beat_display: Vec<Pointer>,
     pub bar_display: Vec<Pointer>,
     pub track_info: Vec<Pointer>,
-    pub anlz_path: Vec<Pointer>
+    pub anlz_path: Vec<Pointer>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -114,7 +141,10 @@ impl Pointer {
 
     pub fn from_string(input: &str, logger: &ScopedLogger) -> Result<Self, String> {
         logger.debug(&format!("Parsing pointer: {input}"));
-        let split = input.split(' ').map(hexparse).collect::<Result<Vec<usize>, String>>()?;
+        let split = input
+            .split(' ')
+            .map(hexparse)
+            .collect::<Result<Vec<usize>, String>>()?;
         let last = *split.last().ok_or("Last offset is missing")?;
         Ok(Self::new(split[0..split.len() - 1].to_vec(), last))
     }

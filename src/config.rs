@@ -3,78 +3,76 @@ use std::fs;
 
 use crate::log::ScopedLogger;
 
-
 #[derive(Clone)]
-pub struct Config{
+pub struct Config {
     entries: HashMap<String, String>,
     namespace: Option<String>,
-    pub logger: ScopedLogger
+    pub logger: ScopedLogger,
 }
 
-impl Config{
-    pub fn read(logger: ScopedLogger) -> Config{
+impl Config {
+    pub fn read(logger: ScopedLogger) -> Config {
         let mut config = HashMap::new();
-        if let Ok(src) = fs::read_to_string("config"){
+        if let Ok(src) = fs::read_to_string("config") {
             let config_lines = src.lines();
-            for line in config_lines{
+            for line in config_lines {
                 let line = line.trim();
-                if line.starts_with("#") || line.is_empty(){
+                if line.starts_with("#") || line.is_empty() {
                     continue;
                 }
-                let Some(splitindex) = line.find(" ") else{
+                let Some(splitindex) = line.find(" ") else {
                     continue;
                 };
                 let key = &line[..splitindex];
                 let value = &line[splitindex + 1..];
                 config.insert(key.to_string(), value.to_string());
             }
-            if config.keys().len() == 0{
+            if config.keys().len() == 0 {
                 logger.warn("Configuration is empty");
             }
-        }else{
+        } else {
             logger.warn("Config file not found");
         };
-        Config{
+        Config {
             entries: config,
             namespace: None,
-            logger
+            logger,
         }
-
-
     }
 
-    pub fn get_or_default<T: std::str::FromStr>(&self, key: &str, default: T) -> T{
-        if let Some(val) = self.get(key){
+    pub fn get_or_default<T: std::str::FromStr>(&self, key: &str, default: T) -> T {
+        if let Some(val) = self.get(key) {
             val
-        }else{
+        } else {
             default
         }
     }
 
-    pub fn get<T: std::str::FromStr>(&self, key: &str) -> Option<T>{
-        let key = if let Some(namespace) = &self.namespace{
+    pub fn get<T: std::str::FromStr>(&self, key: &str) -> Option<T> {
+        let key = if let Some(namespace) = &self.namespace {
             format!("{namespace}.{key}")
-        }else{
+        } else {
             key.to_string()
         };
-        if let Some(val) = self.entries.get(&key){
-            if let Ok(val) = val.parse::<T>(){
+        if let Some(val) = self.entries.get(&key) {
+            if let Ok(val) = val.parse::<T>() {
                 Some(val)
-            }else{
-                self.logger.err(&format!("Invalid value {val} for key '{key}'"));
+            } else {
+                self.logger
+                    .err(&format!("Invalid value {val} for key '{key}'"));
                 None
             }
-        }else{
+        } else {
             self.logger.warn(&format!("Missing config key '{key}'"));
             None
         }
     }
 
-    pub fn reduce_to_namespace(&self, namespace: &str) -> Config{
-        Config{
+    pub fn reduce_to_namespace(&self, namespace: &str) -> Config {
+        Config {
             entries: self.entries.clone(),
             namespace: Some(namespace.to_string()),
-            logger: self.logger.clone()
+            logger: self.logger.clone(),
         }
     }
 }
