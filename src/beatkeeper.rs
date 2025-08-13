@@ -3,6 +3,7 @@ use crate::log::ScopedLogger;
 use crate::offsets::Pointer;
 use crate::outputmodules::ModuleDefinition;
 use crate::outputmodules::OutputModule;
+use crate::utils::PhraseParser;
 use crate::RekordboxOffsets;
 use binrw::BinRead;
 use notify::Watcher;
@@ -111,6 +112,7 @@ pub struct Rekordbox {
     track_infos: Vec<PointerChainValue<[u8; 200]>>,
     anlz_paths: Vec<PointerChainValue<[u8; 500]>>,
     deckcount: usize,
+    phraseparser: PhraseParser
 }
 
 impl Rekordbox {
@@ -156,6 +158,7 @@ impl Rekordbox {
             deckcount,
             track_infos,
             anlz_paths,
+            phraseparser: PhraseParser::new(),
         })
     }
 
@@ -277,6 +280,9 @@ struct TrackingDataTracker {
     original_bpm_changed: ChangeTrackedValue<f32>,
     beat_changed: ChangeTrackedValue<f32>,
     pos_changed: ChangeTrackedValue<i64>,
+    phrase: ChangeTrackedValue<String>,
+    next_phrase: ChangeTrackedValue<String>,
+    next_phrase_in: ChangeTrackedValue<i32>,
 }
 
 impl TrackingDataTracker {
@@ -286,6 +292,9 @@ impl TrackingDataTracker {
             original_bpm_changed: ChangeTrackedValue::new(0.),
             beat_changed: ChangeTrackedValue::new(0.),
             pos_changed: ChangeTrackedValue::new(0),
+            phrase: ChangeTrackedValue::new("".to_string()),
+            next_phrase: ChangeTrackedValue::new("".to_string()),
+            next_phrase_in: ChangeTrackedValue::new(0),
         }
     }
 }
@@ -459,6 +468,9 @@ impl BeatKeeper {
                 let original_bpm_changed = td_tracker.original_bpm_changed.set(res.original_bpm);
                 let beat_changed = td_tracker.beat_changed.set(res.beat);
                 let pos_changed = td_tracker.pos_changed.set(res.timing_data_raw.sample_position);
+                let phrase_changed = td_tracker.phrase.set(res.phrase.clone());
+                let next_phrase_changed = td_tracker.next_phrase.set(res.next_phrase.clone());
+                let next_phrase_in_changed = td_tracker.next_phrase_in.set(res.next_phrase_in);
 
                 for module in &mut self.running_modules {
                     if beat_changed {
@@ -472,6 +484,15 @@ impl BeatKeeper {
                     }
                     if original_bpm_changed {
                         module.original_bpm_changed(res.original_bpm, i);
+                    }
+                    if phrase_changed {
+                        module.phrase_changed(&res.phrase, i);
+                    }
+                    if next_phrase_changed {
+                        module.next_phrase_changed(&res.next_phrase, i);
+                    }
+                    if next_phrase_in_changed {
+                        module.next_phrase_in(res.next_phrase_in, i);
                     }
                 }
 
@@ -489,6 +510,19 @@ impl BeatKeeper {
                         .master_td_tracker
                         .pos_changed
                         .set(res.timing_data_raw.sample_position);
+                    let phrase_changed = self
+                        .master_td_tracker
+                        .phrase
+                        .set(res.phrase);
+                    let next_phrase_changed = self
+                        .master_td_tracker
+                        .next_phrase
+                        .set(res.next_phrase);
+                    let next_phrase_in_changed = self
+                        .master_td_tracker
+                        .next_phrase_in
+                        .set(res.next_phrase_in);
+
 
                     for module in &mut self.running_modules {
                         if beat_changed {
@@ -504,6 +538,15 @@ impl BeatKeeper {
                         }
                         if original_bpm_changed {
                             module.original_bpm_changed_master(res.original_bpm);
+                        }
+                        if phrase_changed {
+                            module.phrase_changed_master(&self.master_td_tracker.phrase.value);
+                        }
+                        if next_phrase_changed {
+                            module.next_phrase_changed_master(&self.master_td_tracker.next_phrase.value);
+                        }
+                        if next_phrase_in_changed {
+                            module.next_phrase_in_master(res.next_phrase_in);
                         }
                     }
                 }
@@ -551,12 +594,12 @@ impl BeatKeeper {
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
                             println!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e);
                         });
-                        println!("Unset watcher: {}", &self.anlz_paths[i].value);
+                        // println!("Unset watcher: {}", &self.anlz_paths[i].value);
                         self.anlz_paths[i].set(path);
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
                             println!("Failed to watch path {}: {}", &self.anlz_paths[i].value, e);
                         });
-                        // println!("Set watcjer: {}", &self.anlz_paths[i].value);
+                        println!("Set watcjer: {}", &self.anlz_paths[i].value);
                     }
 
                     // TODO there's probably loads of things that can go wrong here
@@ -571,9 +614,23 @@ impl BeatKeeper {
                             anlz::Content::BeatGrid(grid) => {
                                 self.track_trackers[i].beatgrid = Some(grid);
                             }
-                            anlz::Content::SongStructure(phrases) => {}
                             _ => (),
                         }
+                    }
+
+                    if let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
+                        let mut reader = Cursor::new(bytes);
+                        let anlz = rekordcrate::anlz::ANLZ::read(&mut reader).unwrap();
+                        for section in anlz.sections {
+                            match section.content {
+                                anlz::Content::SongStructure(phrases) => {
+                                    self.track_trackers[i].songstructure = Some(phrases.data);
+                                }
+                                _ => (),
+                            }
+                        }
+                    } else {
+                        println!("Failed to read EXT file: {}", &self.anlz_paths[i].value);
                     }
                 }
             }
@@ -599,11 +656,15 @@ struct TrackTrackerResult {
     beat: f32,
     original_bpm: f32,
     timing_data_raw: TimingDataRaw,
+    phrase: String,
+    next_phrase: String,
+    next_phrase_in: i32,
 }
 
 struct TrackTracker {
     track_changed: bool, // External flag to indicate that the track has changed
     beatgrid: Option<BeatGrid>,
+    songstructure: Option<rekordcrate::anlz::SongStructureData>,
 }
 
 impl TrackTracker {
@@ -611,6 +672,7 @@ impl TrackTracker {
         Self {
             track_changed: false,
             beatgrid: None,
+            songstructure: None,
         }
     }
 
@@ -625,34 +687,67 @@ impl TrackTracker {
             td.current_bpm = 120.0;
         }
 
+        
+
         let mut beat = 0.0;
         let mut original_bpm = 120.0;
 
         let time_now = (td.sample_position + offset_samples) as f32 / 44100.;
+        let mut beat_idx: usize = 0;
         if let Some(grid) = &self.beatgrid {
-            let mut idx: usize = 0;
             for gridbeat in grid.beats.iter() {
                 if gridbeat.time as f32 / 1000. >= time_now {
                     break;
                 }
-                idx += 1;
+                beat_idx += 1;
             }
-            idx = idx.saturating_sub(1);
-            let gridbeat = &grid.beats[idx];
+            beat_idx = beat_idx.saturating_sub(1);
+            let gridbeat = &grid.beats[beat_idx];
             // println!("{} - {}", time, time_now);
             let remainder = time_now - gridbeat.time as f32 / 1000.;
             original_bpm = gridbeat.tempo as f32 / 100.0;
             let spb = 1. / (gridbeat.tempo as f32 / 100. / 60.0);
 
-            let b = (gridbeat.beat_number + 3) % 4;
+            let b = (gridbeat.beat_number + 3) % 4 + gridbeat.beat_number % 4;
             // println!("{b} {idx}");
             beat = b as f32 + remainder / spb;
         }
 
-        Ok(TrackTrackerResult {
+
+        let beat_num = beat_idx + 1;
+
+        let mut tout = TrackTrackerResult {
             beat,
             original_bpm,
             timing_data_raw: td,
-        })
+            phrase: "".to_string(),
+            next_phrase: "".to_string(),
+            next_phrase_in: 0,
+        };
+
+        let mut phrase_idx: usize = 0;
+        if let Some(songstructure) = &self.songstructure {
+            // println!("Song structure: {:?}", songstructure);
+            for phrase in songstructure.phrases.iter() {
+                // println!("beat {} / {beat_idx}", phrase.beat);
+                if phrase.beat as usize > beat_num {
+                    break;
+                }
+                phrase_idx += 1;
+            }
+            phrase_idx = phrase_idx.saturating_sub(1);
+            // println!("{phrase_idx} {beat_idx} {:?}", &songstructure.phrases[phrase_idx].kind);
+            // println!("Phrase: {beat_num} {}", rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]));
+            tout.phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]);
+            if phrase_idx + 1 < songstructure.phrases.len() {
+                let next_phrase = &songstructure.phrases[phrase_idx + 1];
+                let next_phrase_in = next_phrase.beat as i32 - beat_num as i32;
+                tout.next_phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, next_phrase);
+                tout.next_phrase_in = next_phrase_in;
+                // println!("{}: {next_phrase_in}", rb.phraseparser.get_phrase_name(&songstructure.mood, next_phrase));
+            }
+        }
+
+        Ok(tout)
     }
 }

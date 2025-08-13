@@ -12,6 +12,7 @@ mod outputmodules;
 mod beatkeeper;
 mod config;
 mod log;
+mod utils;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

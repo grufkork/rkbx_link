@@ -109,4 +109,16 @@ impl OutputModule for Osc {
                 .info(&format!("Sending {source_addr} -> {target_addr}"));
         }
     }
+
+    fn phrase_changed_master(&mut self, phrase: &str) {
+        self.send_string("/phrase/master/current", phrase);
+    }
+
+    fn next_phrase_changed_master(&mut self, phrase: &str) {
+        self.send_string("/phrase/master/next", phrase);
+    }
+
+    fn next_phrase_in_master(&mut self, beats: i32) {
+        self.send_float("/phrase/master/countin", beats as f32);
+    }
 }

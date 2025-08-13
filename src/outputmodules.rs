@@ -23,6 +23,15 @@ pub trait OutputModule {
     fn track_changed(&mut self, _track: &TrackInfo, _deck: usize) {}
     fn track_changed_master(&mut self, _track: &TrackInfo) {}
 
+    fn phrase_changed(&mut self, _phrase: &str, _deck: usize) {}
+    fn phrase_changed_master(&mut self, _phrase: &str) {}
+
+    fn next_phrase_changed(&mut self, _phrase: &str, _deck: usize) {}
+    fn next_phrase_changed_master(&mut self, _phrase: &str) {}
+
+    fn next_phrase_in(&mut self, _beats: i32, _deck: usize) {}
+    fn next_phrase_in_master(&mut self, _beats: i32) {}
+
     fn slow_update(&mut self) {}
 }
 
