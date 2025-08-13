@@ -708,7 +708,7 @@ impl TrackTracker {
             original_bpm = gridbeat.tempo as f32 / 100.0;
             let spb = 1. / (gridbeat.tempo as f32 / 100. / 60.0);
 
-            let b = (gridbeat.beat_number + 3) % 4 + gridbeat.beat_number % 4;
+            let b = (gridbeat.beat_number + 3) % 4;
             // println!("{b} {idx}");
             beat = b as f32 + remainder / spb;
         }
