@@ -54,24 +54,12 @@ impl<T> Value<T> {
 
 pub struct Rekordbox {
     master_bpm_val: Value<f32>,
-    bar1_val: Value<i32>,
-    beat1_val: Value<i32>,
-    bar2_val: Value<i32>,
-    beat2_val: Value<i32>,
-    bar3_val: Value<i32>,
-    beat3_val: Value<i32>,
-    bar4_val: Value<i32>,
-    beat4_val: Value<i32>,
+    bar_vals: [Value<i32>; 4],
+    beat_vals: [Value<i32>; 4],
     masterdeck_index_val: Value<u8>,
 
-    pub bars1: i32,
-    pub bars2: i32,
-    pub bars3: i32,
-    pub bars4: i32,
-    pub beats1: i32,
-    pub beats2: i32,
-    pub beats3: i32,
-    pub beats4: i32,
+    pub bars: [i32; 4],
+    pub beats: [i32; 4],
     pub master_bars: i32,
     pub master_beats: i32,
     pub master_bpm: f32,
@@ -88,38 +76,29 @@ impl Rekordbox {
 
         let master_bpm_val: Value<f32> = Value::new(h, base, offsets.master_bpm);
 
-        let bar1_val: Value<i32> = Value::new(h, base, offsets.deck1bar);
-        let beat1_val: Value<i32> = Value::new(h, base, offsets.deck1beat);
-        let bar2_val: Value<i32> = Value::new(h, base, offsets.deck2bar);
-        let beat2_val: Value<i32> = Value::new(h, base, offsets.deck2beat);
-        let bar3_val: Value<i32> = Value::new(h, base, offsets.deck3bar);
-        let beat3_val: Value<i32> = Value::new(h, base, offsets.deck3beat);
-        let bar4_val: Value<i32> = Value::new(h, base, offsets.deck4bar);
-        let beat4_val: Value<i32> = Value::new(h, base, offsets.deck4beat);
+        let bar_vals: [Value<i32>; 4] = [
+            Value::new(h, base, offsets.deck1bar),
+            Value::new(h, base, offsets.deck2bar),
+            Value::new(h, base, offsets.deck3bar),
+            Value::new(h, base, offsets.deck4bar),
+        ];
+
+        let beat_vals: [Value<i32>; 4] = [
+            Value::new(h, base, offsets.deck1beat),
+            Value::new(h, base, offsets.deck2beat),
+            Value::new(h, base, offsets.deck3beat),
+            Value::new(h, base, offsets.deck4beat),
+        ];
 
         let masterdeck_index_val: Value<u8> = Value::new(h, base, offsets.masterdeck_index);
 
         Self {
             master_bpm_val,
-            bar1_val,
-            beat1_val,
-            bar2_val,
-            beat2_val,
-            bar3_val,
-            beat3_val,
-            bar4_val,
-            beat4_val,
-
+            bar_vals,
+            beat_vals,
+            bars: [-1; 4],
+            beats: [-1; 4],
             masterdeck_index_val,
-
-            bars1: -1,
-            bars2: -1,
-            bars3: -1,
-            bars4: -1,
-            beats1: -1,
-            beats2: -1,
-            beats3: -1,
-            beats4: -1,
             master_bpm: 120.0,
             masterdeck_index: 0,
             master_bars: 0,
@@ -129,24 +108,19 @@ impl Rekordbox {
 
     fn update(&mut self) {
         self.master_bpm = self.master_bpm_val.read();
-        self.bars1 = self.bar1_val.read();
-        self.bars2 = self.bar2_val.read();
-        self.bars3 = self.bar3_val.read();
-        self.bars4 = self.bar4_val.read();
-        self.beats1 = self.bar1_val.read() * 4 + self.beat1_val.read();
-        self.beats2 = self.bar2_val.read() * 4 + self.beat2_val.read();
-        self.beats3 = self.bar3_val.read() * 4 + self.beat3_val.read();
-        self.beats4 = self.bar4_val.read() * 4 + self.beat4_val.read();
+        for i in 0..4 {
+            self.bars[i] = self.bar_vals[i].read();
+            self.beats[i] = self.bars[i] * 4 + self.beat_vals[i].read();
+        }
         self.masterdeck_index = self.masterdeck_index_val.read();
+        let idx = self.masterdeck_index as usize;
         
-        (self.master_bars, self.master_beats) = match self.masterdeck_index {
-            0 => (self.bars1, self.beats1),
-            1 => (self.bars2, self.beats2),
-            2 => (self.bars3, self.beats3),
-            3 => (self.bars4, self.beats4),
-            _ => (self.bars1, self.beats1), // sensible default
-        };
-
+        (self.master_bars, self.master_beats) =
+            if self.masterdeck_index < 4 {
+                (self.bars[idx], self.beats[idx])
+            } else {
+                (0, 0) // fallback
+            };
     }
 }
 
