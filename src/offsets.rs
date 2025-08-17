@@ -10,6 +10,10 @@ impl RekordboxOffsets {
             deck1beat: Pointer::from_string(rows.next().unwrap()),
             deck2bar: Pointer::from_string(rows.next().unwrap()),
             deck2beat: Pointer::from_string(rows.next().unwrap()),
+            deck3bar: Pointer::from_string(rows.next().unwrap()),
+            deck3beat: Pointer::from_string(rows.next().unwrap()),
+            deck4bar: Pointer::from_string(rows.next().unwrap()),
+            deck4beat: Pointer::from_string(rows.next().unwrap()),
             master_bpm: Pointer::from_string(rows.next().unwrap()),
             masterdeck_index: Pointer::from_string(rows.next().unwrap()),
         }
@@ -47,6 +51,10 @@ pub struct RekordboxOffsets {
     pub deck1beat: Pointer,
     pub deck2bar: Pointer,
     pub deck2beat: Pointer,
+    pub deck3bar: Pointer,
+    pub deck3beat: Pointer,
+    pub deck4bar: Pointer,
+    pub deck4beat: Pointer,
     pub master_bpm: Pointer,
     pub masterdeck_index: Pointer,
 }

@@ -1,5 +1,4 @@
 use rosc::{encoder::encode, OscMessage, OscPacket, OscType};
-use rusty_link::{AblLink, SessionState};
 use std::process::Command;
 use std::{
     env,
@@ -59,12 +58,20 @@ pub struct Rekordbox {
     beat1_val: Value<i32>,
     bar2_val: Value<i32>,
     beat2_val: Value<i32>,
+    bar3_val: Value<i32>,
+    beat3_val: Value<i32>,
+    bar4_val: Value<i32>,
+    beat4_val: Value<i32>,
     masterdeck_index_val: Value<u8>,
 
     pub bars1: i32,
     pub bars2: i32,
+    pub bars3: i32,
+    pub bars4: i32,
     pub beats1: i32,
     pub beats2: i32,
+    pub beats3: i32,
+    pub beats4: i32,
     pub master_bars: i32,
     pub master_beats: i32,
     pub master_bpm: f32,
@@ -85,6 +92,10 @@ impl Rekordbox {
         let beat1_val: Value<i32> = Value::new(h, base, offsets.deck1beat);
         let bar2_val: Value<i32> = Value::new(h, base, offsets.deck2bar);
         let beat2_val: Value<i32> = Value::new(h, base, offsets.deck2beat);
+        let bar3_val: Value<i32> = Value::new(h, base, offsets.deck3bar);
+        let beat3_val: Value<i32> = Value::new(h, base, offsets.deck3beat);
+        let bar4_val: Value<i32> = Value::new(h, base, offsets.deck4bar);
+        let beat4_val: Value<i32> = Value::new(h, base, offsets.deck4beat);
 
         let masterdeck_index_val: Value<u8> = Value::new(h, base, offsets.masterdeck_index);
 
@@ -94,13 +105,21 @@ impl Rekordbox {
             beat1_val,
             bar2_val,
             beat2_val,
+            bar3_val,
+            beat3_val,
+            bar4_val,
+            beat4_val,
 
             masterdeck_index_val,
 
             bars1: -1,
             bars2: -1,
+            bars3: -1,
+            bars4: -1,
             beats1: -1,
             beats2: -1,
+            beats3: -1,
+            beats4: -1,
             master_bpm: 120.0,
             masterdeck_index: 0,
             master_bars: 0,
@@ -112,22 +131,22 @@ impl Rekordbox {
         self.master_bpm = self.master_bpm_val.read();
         self.bars1 = self.bar1_val.read();
         self.bars2 = self.bar2_val.read();
+        self.bars3 = self.bar3_val.read();
+        self.bars4 = self.bar4_val.read();
         self.beats1 = self.bar1_val.read() * 4 + self.beat1_val.read();
         self.beats2 = self.bar2_val.read() * 4 + self.beat2_val.read();
+        self.beats3 = self.bar3_val.read() * 4 + self.beat3_val.read();
+        self.beats4 = self.bar4_val.read() * 4 + self.beat4_val.read();
         self.masterdeck_index = self.masterdeck_index_val.read();
         
-        self.master_bars = if self.masterdeck_index == 0 {
-            self.bars1
-        } else {
-            self.beats2
+        (self.master_bars, self.master_beats) = match self.masterdeck_index {
+            0 => (self.bars1, self.beats1),
+            1 => (self.bars2, self.beats2),
+            2 => (self.bars3, self.beats3),
+            3 => (self.bars4, self.beats4),
+            _ => (self.bars1, self.beats1), // sensible default
         };
 
-        self.master_beats = if self.masterdeck_index == 0 {
-            self.beats1
-        } else {
-            self.beats2
-        };
-        
     }
 }
 
@@ -279,9 +298,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     let mut source_address = "0.0.0.0:0".to_string();
-    let mut target_address = "127.0.0.1:6669".to_string();
-
-    let mut osc_enabled = false;
+    let mut target_address = "192.168.2.249:6669".to_string(); // Computzer default IP
 
     let version_offsets = RekordboxOffsets::from_file("offsets");
     let mut versions: Vec<String> = version_offsets.keys().map(|x| x.to_string()).collect();
@@ -301,9 +318,6 @@ fn main() {
                             println!("Updating offsets...");
                             download_offsets();
                             return;
-                        }
-                        "o" => {
-                            osc_enabled = true;
                         }
                         "s" => {
                             source_address = args_iter.next().unwrap().to_string();
@@ -326,7 +340,6 @@ Flags:
  -v  Rekordbox version to target, eg. 6.7.3
 
 -- OSC --
- -o  Enable OSC
  -s  Source address, eg. 127.0.0.1:1337
  -t  Target address, eg. 192.168.1.56:6667
 
@@ -363,7 +376,7 @@ Available versions:",
     };
     println!("Targeting Rekordbox version {target_version}");
 
-    let socket = if osc_enabled {
+    let socket = {
         println!("Connecting from: {}", source_address);
         println!("Connecting to:   {}", target_address);
         let socket = match UdpSocket::bind(&source_address) {
@@ -384,8 +397,6 @@ Available versions:",
             }
         };
         Some(socket)
-    } else {
-        None
     };
 
     println!();
@@ -395,12 +406,6 @@ Available versions:",
     println!();
 
     let mut keeper = BeatKeeper::new(offsets.clone());
-    let link = AblLink::new(120.);
-    link.enable(false);
-
-    let mut state = SessionState::new();
-    link.capture_app_session_state(&mut state);
-    link.enable(true);
 
     // Due to Windows timers having a default resolution 0f 15.6ms, we need to use a "too high"
     // value to acheive ~60Hz
@@ -442,8 +447,6 @@ Available versions:",
         }
 
         if let Some(bpm) = keeper.get_bpm() {
-            state.set_tempo(bpm.into(), link.clock_micros());
-            link.commit_app_session_state(&state);
             if let Some(socket) = &socket {
                 let msg = OscPacket::Message(OscMessage {
                     addr: "/bpm".to_string(),
@@ -454,16 +457,7 @@ Available versions:",
             }
         }
 
-        if keeper.get_new_beat() {
-            let current_link_beat_approx = state.beat_at_time(link.clock_micros(), 4.).round();
-            let target_beat = ((keeper.last_beat as f64) % 4. - current_link_beat_approx % 4. + 4.)
-                % 4.
-                + current_link_beat_approx
-                - 1.; // Ensure the 1 is on the 1
-
-            state.request_beat_at_time(target_beat, link.clock_micros(), 4.);
-            link.commit_app_session_state(&state);
-        }
+        if keeper.get_new_beat() {}
 
         while let Ok(key) = rx.try_recv() {
             match key {
@@ -487,7 +481,7 @@ Available versions:",
             let frac = (keeper.last_beat - 1) % 4;
 
             print!(
-                "\rRunning {} [{}] Deck {}     OSC Offset: {}ms     Frq: {: >3}Hz    Peers:{}   BPM:{}    ",
+                "\rRunning {} [{}] Deck {}     OSC Offset: {}ms     Frq: {: >3}Hz     BPM:{}    ",
                 CHARS[step],
                 (0..4)
                 .map(|i| {
@@ -501,7 +495,6 @@ Available versions:",
                 keeper.last_masterdeck_index,
                 keeper.offset_micros / 1000.,
                 1000000 / (delta.as_micros().max(1)),
-                link.num_peers(),
                 keeper.last_bpm
                 );
 
@@ -518,7 +511,7 @@ fn download_offsets() {
         .args([
             "-o",
             "offsets",
-            "https://raw.githubusercontent.com/grufkork/rkbx_osc/master/offsets",
+            "https://raw.githubusercontent.com/James-Randall-14/rkbx_osc/master/offsets",
         ])
         .output()
     {
