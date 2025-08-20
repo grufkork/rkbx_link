@@ -27,8 +27,29 @@ keeper.decks 2
 osc.enabled true
 # Local address to bind to
 osc.source 127.0.0.1:4450
-# Remore address to send to
+# Remote address to send to
 osc.destination 127.0.0.1:4460
+# Time-critical OSC messages will be sent at update_rate/this value.
+# Increasing this saves bandwidth
+# Not all apps can handle 120*n messages per second
+osc.send_every_nth 2
+
+# Enable/disable messages to save bandwidth
+# Those with "master" enable sending for the currently active deck
+# Those without enable sending of all decks
+osc.msg.beat_master true
+osc.msg.beat_master.div_1 false
+osc.msg.beat_master.div_2 false
+osc.msg.beat_master.div_4 false
+osc.msg.time_master true
+osc.msg.phrase_master true
+
+osc.msg.beat false
+osc.msg.beat.div_1 false
+osc.msg.beat.div_2 false
+osc.msg.beat.div_4 false
+osc.msg.time false
+osc.msg.phrase false
 
 # == Ableton Link ==
 link.enabled true

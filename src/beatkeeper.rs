@@ -451,6 +451,10 @@ impl BeatKeeper {
 
         // let mut tracker_data = None;
 
+        for module in &mut self.running_modules {
+            module.pre_update();
+        }
+
         for (i, (tracker, td_tracker)) in (self.track_trackers[0..self.decks])
             .iter_mut()
             .zip(self.td_trackers[0..self.decks].iter_mut())

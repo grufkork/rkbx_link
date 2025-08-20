@@ -8,6 +8,9 @@ pub mod osc;
 pub mod setlist;
 
 pub trait OutputModule {
+
+    fn pre_update(&mut self) {}
+
     fn bpm_changed(&mut self, _bpm: f32, _deck: usize) {}
     fn bpm_changed_master(&mut self, _bpm: f32) {}
 
