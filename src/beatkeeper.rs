@@ -376,8 +376,9 @@ impl BeatKeeper {
                     thread::sleep(Duration::from_secs(3));
                 } else {
                     n = (n + 1) % slow_update_denominator;
-                    if period > update_start_time.elapsed() {
-                        thread::sleep(period - update_start_time.elapsed());
+                    let elapsed = update_start_time.elapsed();
+                    if period > elapsed {
+                        thread::sleep(period - elapsed);
                     }
                 }
             } else {
