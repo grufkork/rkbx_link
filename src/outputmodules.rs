@@ -6,6 +6,7 @@ pub mod abletonlink;
 pub mod osc;
 pub mod file;
 pub mod setlist;
+pub mod sacn;
 
 pub trait OutputModule {
     fn bpm_changed(&mut self, _bpm: f32){}

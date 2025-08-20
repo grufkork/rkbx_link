@@ -3,7 +3,7 @@ app.licensekey evaluation
 # Check for updates at startup (enable only if you have a license)
 app.auto_update false
 # Show debug logs
-app.debug false
+app.debug true
 
 # Rekordbox version to target
 keeper.rekordbox_version 7.1.3
@@ -21,6 +21,8 @@ keeper.keep_warm true
 # Number of active decks
 keeper.decks 2
 
+# == sACN ==
+sacn.enabled true
 
 
 # == Open Sound Control ==

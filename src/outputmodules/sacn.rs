@@ -1,0 +1,194 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use sacn::packet::ACN_SDT_MULTICAST_PORT;
+use sacn::source::SacnSource;
+
+use crate::{beatkeeper::TrackInfo, config::Config, log::ScopedLogger};
+use super::OutputModule;
+
+/// sACN (E1.31) output module using the trusted `sacn` crate.
+///
+/// Config keys (with defaults):
+/// - `source` (String): local bind address, e.g. "0.0.0.0:5569". Default: bind to 0.0.0.0 on ACN port+1 (5569).
+/// - `mode` (String): "multicast" (default) or "unicast".
+/// - `universe` (u16): sACN universe (1..=63999), default 1.
+/// - `start_channel` (u16): DMX start/offset (1..=511), default 1. (We need 2 slots: BPM + beat counter)
+/// - `targets` (String): comma-separated IPv4 list for unicast. Example: "192.168.0.50,192.168.0.51".
+/// - `priority` (u8): sACN priority 1..200, default 100.
+/// - `source_name` (String): up to 63 ASCII chars shown by receivers. Default: "Rust sACN".
+/// - `log_first_send` (bool): log source->target once, default true.
+///
+/// Slot mapping (starting at `start_channel`):
+/// - +0 : BPM (u8). Capped to 250. Values > 250 are sent as 250.
+/// - +1 : Beat absolute counter (u8). Wraps 0..=255.
+///
+/// Dropped fields from previous version: original BPM, time since start, playback speed, strings.
+pub struct SACN {
+    src: SacnSource,
+    mode: Mode,
+    targets: Vec<SocketAddr>,
+    universe: u16,
+    start_slot: usize, // 1..=511 (we need 2 slots)
+    priority: u8,
+    local_addr: SocketAddr,
+    dmx: [u8; 513], // index 0 is start code = 0, then 512 DMX slots
+    info_logged: bool,
+    logger: ScopedLogger,
+    last_beat_floor: i32,
+    beat_counter: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode { Multicast, Unicast }
+
+impl SACN 
+{
+    pub fn create(conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
+        // Local bind address
+        let source_name = conf.get_or_default("source_name", String::from("Rust sACN"));
+        let bind_str: Option<String> = conf.get("source");
+        let local_addr = match bind_str {
+            Some(s) => s.parse::<SocketAddr>().expect("Invalid sACN bind addr"),
+            None => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), ACN_SDT_MULTICAST_PORT + 1), // 0.0.0.0:5569
+        };
+
+        let mut src = SacnSource::with_ip(&source_name, local_addr)
+            .expect("Failed to create SacnSource");
+
+        // Mode
+        let mode_str = conf.get_or_default("mode", String::from("multicast"));
+        let mode = match mode_str.to_ascii_lowercase().as_str() { "unicast" => Mode::Unicast, _ => Mode::Multicast };
+
+        // Universe
+        let mut universe: u16 = conf.get_or_default("universe", 1u16);
+        if universe == 0 { universe = 1; }
+        src.register_universe(universe).expect("register_universe failed");
+
+        // Start slot (1-511 so we have 2 slots available)
+        let mut start_slot: usize = conf.get_or_default("start_channel", 1u16) as usize;
+        if start_slot < 1 { start_slot = 1; }
+        if start_slot > 511 { start_slot = 511; }
+
+        // Priority
+        let mut priority: u8 = conf.get_or_default("priority", 100u8);
+        if priority < 1 { priority = 1; }
+        if priority > 200 { priority = 200; }
+
+        // Targets
+        let mut targets: Vec<SocketAddr> = Vec::new();
+        if matches!(mode, Mode::Unicast) {
+            let list = conf.get_or_default("targets", String::new());
+            for ip in list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                // Default to the standard ACN port if no port was given
+                let sa = if ip.contains(':') { ip.to_string() } else { format!("{}:{}", ip, ACN_SDT_MULTICAST_PORT) };
+                if let Ok(sa) = sa.parse::<SocketAddr>() { targets.push(sa); }
+            }
+        }
+
+        // DMX buffer (start code + 512 slots)
+        let mut dmx = [0u8; 513];
+        dmx[0] = 0x00; // start code
+
+        Box::new(SACN {
+            src,
+            mode,
+            targets,
+            universe,
+            start_slot,
+            priority,
+            local_addr,
+            dmx,
+            info_logged: false,
+            logger,
+            last_beat_floor: i32::MIN,
+            beat_counter: 0,
+        })
+    }
+
+fn send(&mut self) {
+    // Determine minimal length to include the 2 slots we use
+    let last_slot = (self.start_slot + 1).min(512);
+    let len = 1 + last_slot; // +1 for start code
+    let data: &[u8] = &self.dmx[..len];
+
+    match self.mode {
+        Mode::Multicast => {
+            let _ = self
+                .src
+                .send(&[self.universe], data, Some(self.priority), None, None);
+        }
+        Mode::Unicast => {
+            for &dst in &self.targets {
+                let _ = self
+                    .src
+                    .send(&[self.universe], data, Some(self.priority), Some(dst), None);
+            }
+        }
+    }
+
+    //if !self.info_logged {
+        self.info_logged = true;
+        match self.mode {
+            Mode::Multicast => {
+                self.logger.info(&format!(
+                    "sACN(multicast) sending {} -> universe {} ({} bytes)",
+                    self.local_addr, self.universe, len
+                ));
+            }
+            Mode::Unicast => {
+                self.logger.info(&format!(
+                    "sACN(unicast) sending {} -> {} targets, universe {} ({} bytes)",
+                    self.local_addr, self.targets.len(), self.universe, len
+                ));
+            }
+        }
+    //}
+}
+
+	
+
+    #[inline]
+    fn write_u8_slot(&mut self, slot_1based: usize, value: u8) {
+        // DMX slots live at dmx[1..=512]. slot_1based in 1..=512
+        if (1..=512).contains(&slot_1based) {
+            self.dmx[slot_1based] = value; // +0 because index 0 is start code
+        }
+    }
+}
+
+impl OutputModule for SACN {
+    fn bpm_changed(&mut self, bpm: f32){
+        // One byte, capped at 250
+        let mut v = bpm.round() as i32;
+        if v < 0 { v = 0; }
+        if v > 250 { v = 250; }
+        self.write_u8_slot(self.start_slot + 0, v as u8);
+        self.send();
+    }
+
+    fn original_bpm_changed(&mut self, bpm: f32){
+        // Project only needs one BPM -> mirror to the same slot
+        self.bpm_changed(bpm);
+    }
+
+    fn beat_update(&mut self, beat: f32){
+        // Increment counter whenever floor(beat) increases
+        let floor_now = beat.floor() as i32;
+        if self.last_beat_floor == i32::MIN {
+            self.last_beat_floor = floor_now;
+        } else if floor_now > self.last_beat_floor {
+            let steps = (floor_now - self.last_beat_floor) as u8;
+            self.beat_counter = self.beat_counter.wrapping_add(steps);
+            self.last_beat_floor = floor_now;
+            self.write_u8_slot(self.start_slot + 1, self.beat_counter);
+            self.send();
+        }
+    }
+
+    fn time_update(&mut self, _time: f32){ /* not used */ }
+    fn playback_speed_changed(&mut self, _speed: f32) { /* not used */ }
+
+    fn track_changed(&mut self, _track: TrackInfo, _deck: usize){ /* not used */ }
+
+    fn slow_update(&mut self) { /* no-op */ }
+}

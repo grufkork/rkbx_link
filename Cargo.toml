@@ -15,6 +15,7 @@ rosc = "0.10.1"
 rusty_link = "0.4.2"
 reqwest = {version = "0.12.7", features = ["blocking"]}
 termcolor = "1.4.1"
+sacn = "0.10"
 
 [features]
 dev = []
