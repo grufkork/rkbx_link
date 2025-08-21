@@ -18,6 +18,7 @@ termcolor = "1.4.1"
 binrw = "0.14.0"
 rekordcrate = { git = "https://github.com/grufkork/rekordcrate.git", branch = "main" }
 notify = "8.2.0"
+sacn = "0.10"
 
 [features]
 dev = []

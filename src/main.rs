@@ -65,6 +65,7 @@ fn main() {
             outputmodules::abletonlink::AbletonLink::create,
         ),
         ModuleDefinition::new("osc", "OSC", outputmodules::osc::Osc::create),
+		ModuleDefinition::new("sacn", "sACN", outputmodules::sacn::SACN::create),
         ModuleDefinition::new("file", "File", outputmodules::file::File::create),
         ModuleDefinition::new(
             "setlist",
