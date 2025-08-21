@@ -162,26 +162,28 @@ fn send(&mut self) {
 
 impl OutputModule for SACN {
     fn bpm_changed_master(&mut self, bpm: f32){
-        // One byte, capped at 250
         let mut v = bpm.round() as i32;
         if v < 0 { v = 0; }
         if v > 250 { v = 250; }
-        self.write_u8_slot(self.start_slot + 0, v as u8);
-        self.send();
+        self.write_u8_slot(self.start_slot + 0, v as u8); //only send/flush on beat change and slow update to avoid congestion.
         self.logger.debug(&format!("sACN: BPM changed to {}", v));
     }
 
     fn beat_update_master(&mut self, beat: f32){
         let floor_now = beat.floor() as i32;
-        if self.last_beat_floor == i32::MIN {
+       
+        if self.last_beat_floor != floor_now {
             self.last_beat_floor = floor_now;
-        } else if floor_now > self.last_beat_floor {
-            let steps = (floor_now - self.last_beat_floor) as u8;
-            self.beat_counter = self.beat_counter.wrapping_add(steps);
-            self.last_beat_floor = floor_now;
+            self.beat_counter = self.beat_counter.wrapping_add(1);
             self.write_u8_slot(self.start_slot + 1, self.beat_counter);
             self.send();
             self.logger.debug(&format!("sACN: Beat updated to {}, counter={}", beat, self.beat_counter));
         }
+    }
+
+    fn slow_update(&mut self) {
+        //this is done as a keepalive.
+        //eventually add some info here like play/pause state, etc.
+        self.send();
     }
 }
