@@ -33,7 +33,6 @@ pub struct SACN {
     priority: u8,
     local_addr: SocketAddr,
     dmx: [u8; 513], // index 0 is start code = 0, then 512 DMX slots
-    info_logged: bool,
     logger: ScopedLogger,
     last_beat_floor: i32,
     beat_counter: u8,
@@ -50,11 +49,10 @@ impl SACN
         let bind_str: Option<String> = conf.get("source");
         let local_addr = match bind_str {
             Some(s) => s.parse::<SocketAddr>().expect("Invalid sACN bind addr"),
-            None => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), ACN_SDT_MULTICAST_PORT + 1), // 0.0.0.0:5569
+            None => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
         };
 
-        let mut src = SacnSource::with_ip(&source_name, local_addr)
-            .expect("Failed to create SacnSource");
+        let mut src = SacnSource::with_ip(&source_name, local_addr).expect("Failed to create SacnSource");
 
         // Mode
         let mode_str = conf.get_or_default("mode", String::from("multicast"));
@@ -85,6 +83,15 @@ impl SACN
                 if let Ok(sa) = sa.parse::<SocketAddr>() { targets.push(sa); }
             }
         }
+        logger.info(&format!(
+            "sACN config: priority={}, start_slot={}, universe={}, mode={}, local_addr={}, targets={:?}",
+            priority,
+            start_slot,
+            universe,
+            mode_str,
+            local_addr,
+            targets
+        ));
 
         // DMX buffer (start code + 512 slots)
         let mut dmx = [0u8; 513];
@@ -99,7 +106,6 @@ impl SACN
             priority,
             local_addr,
             dmx,
-            info_logged: false,
             logger,
             last_beat_floor: i32::MIN,
             beat_counter: 0,
@@ -107,7 +113,7 @@ impl SACN
     }
 
 fn send(&mut self) {
-    // Determine minimal length to include the 2 slots we use
+    //only send up to the bytes we actually use (using a low start_slot prevents sending the whole universe on update)
     let last_slot = (self.start_slot + 1).min(512);
     let len = 1 + last_slot; // +1 for start code
     let data: &[u8] = &self.dmx[..len];
@@ -127,23 +133,20 @@ fn send(&mut self) {
         }
     }
 
-    //if !self.info_logged {
-        self.info_logged = true;
         match self.mode {
             Mode::Multicast => {
-                self.logger.info(&format!(
+                self.logger.debug(&format!(
                     "sACN(multicast) sending {} -> universe {} ({} bytes)",
                     self.local_addr, self.universe, len
                 ));
             }
             Mode::Unicast => {
-                self.logger.info(&format!(
+                self.logger.debug(&format!(
                     "sACN(unicast) sending {} -> {} targets, universe {} ({} bytes)",
                     self.local_addr, self.targets.len(), self.universe, len
                 ));
             }
-        }
-    //}
+    }
 }
 
 	
@@ -165,14 +168,10 @@ impl OutputModule for SACN {
         if v > 250 { v = 250; }
         self.write_u8_slot(self.start_slot + 0, v as u8);
         self.send();
+        self.logger.debug(&format!("sACN: BPM changed to {}", v));
     }
 
-    // fn original_bpm_changed_master(&mut self, bpm: f32){ //what is the difference to bpm_changed_master?
-    //     self.bpm_changed_master(bpm);
-    // }
-
     fn beat_update_master(&mut self, beat: f32){
-        // Increment counter whenever floor(beat) increases
         let floor_now = beat.floor() as i32;
         if self.last_beat_floor == i32::MIN {
             self.last_beat_floor = floor_now;
@@ -182,6 +181,7 @@ impl OutputModule for SACN {
             self.last_beat_floor = floor_now;
             self.write_u8_slot(self.start_slot + 1, self.beat_counter);
             self.send();
+            self.logger.debug(&format!("sACN: Beat updated to {}, counter={}", beat, self.beat_counter));
         }
     }
 }
