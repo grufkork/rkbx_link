@@ -24,7 +24,6 @@ keeper.decks 2
 # == sACN ==
 sacn.enabled true
 
-
 # == Open Sound Control ==
 osc.enabled true
 # Local address to bind to
