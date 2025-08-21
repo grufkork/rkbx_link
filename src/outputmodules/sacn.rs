@@ -4,25 +4,26 @@ use sacn::packet::ACN_SDT_MULTICAST_PORT;
 use sacn::source::SacnSource;
 
 use crate::{beatkeeper::TrackInfo, config::Config, log::ScopedLogger};
+use super::ModuleCreateOutput;
 use super::OutputModule;
 
-/// sACN (E1.31) output module using the trusted `sacn` crate.
+/// sACN (E1.31) output module
 ///
 /// Config keys (with defaults):
 /// - `source` (String): local bind address, e.g. "0.0.0.0:5569". Default: bind to 0.0.0.0 on ACN port+1 (5569).
 /// - `mode` (String): "multicast" (default) or "unicast".
 /// - `universe` (u16): sACN universe (1..=63999), default 1.
-/// - `start_channel` (u16): DMX start/offset (1..=511), default 1. (We need 2 slots: BPM + beat counter)
+/// - `start_channel` (u16): DMX start/offset (1..=511), default 1. (We need 2 slots: beat count and BPM.)
 /// - `targets` (String): comma-separated IPv4 list for unicast. Example: "192.168.0.50,192.168.0.51".
 /// - `priority` (u8): sACN priority 1..200, default 100.
-/// - `source_name` (String): up to 63 ASCII chars shown by receivers. Default: "Rust sACN".
+/// - `source_name` (String): up to 63 ASCII chars shown by receivers. Default: "rkbx link".
 /// - `log_first_send` (bool): log source->target once, default true.
 ///
 /// Slot mapping (starting at `start_channel`):
 /// - +0 : BPM (u8). Capped to 250. Values > 250 are sent as 250.
 /// - +1 : Beat absolute counter (u8). Wraps 0..=255.
 ///
-/// Dropped fields from previous version: original BPM, time since start, playback speed, strings.
+
 pub struct SACN {
     src: SacnSource,
     mode: Mode,
@@ -43,9 +44,9 @@ enum Mode { Multicast, Unicast }
 
 impl SACN 
 {
-    pub fn create(conf: Config, logger: ScopedLogger) -> Box<dyn OutputModule> {
+    pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
         // Local bind address
-        let source_name = conf.get_or_default("source_name", String::from("Rust sACN"));
+        let source_name = conf.get_or_default("source_name", String::from("rkbx link"));
         let bind_str: Option<String> = conf.get("source");
         let local_addr = match bind_str {
             Some(s) => s.parse::<SocketAddr>().expect("Invalid sACN bind addr"),
@@ -89,7 +90,7 @@ impl SACN
         let mut dmx = [0u8; 513];
         dmx[0] = 0x00; // start code
 
-        Box::new(SACN {
+        Ok(Box::new(SACN {
             src,
             mode,
             targets,
@@ -102,7 +103,7 @@ impl SACN
             logger,
             last_beat_floor: i32::MIN,
             beat_counter: 0,
-        })
+        }))
     }
 
 fn send(&mut self) {
@@ -157,7 +158,7 @@ fn send(&mut self) {
 }
 
 impl OutputModule for SACN {
-    fn bpm_changed(&mut self, bpm: f32){
+    fn bpm_changed_master(&mut self, bpm: f32){
         // One byte, capped at 250
         let mut v = bpm.round() as i32;
         if v < 0 { v = 0; }
@@ -166,12 +167,11 @@ impl OutputModule for SACN {
         self.send();
     }
 
-    fn original_bpm_changed(&mut self, bpm: f32){
-        // Project only needs one BPM -> mirror to the same slot
-        self.bpm_changed(bpm);
-    }
+    // fn original_bpm_changed_master(&mut self, bpm: f32){ //what is the difference to bpm_changed_master?
+    //     self.bpm_changed_master(bpm);
+    // }
 
-    fn beat_update(&mut self, beat: f32){
+    fn beat_update_master(&mut self, beat: f32){
         // Increment counter whenever floor(beat) increases
         let floor_now = beat.floor() as i32;
         if self.last_beat_floor == i32::MIN {
@@ -184,11 +184,4 @@ impl OutputModule for SACN {
             self.send();
         }
     }
-
-    fn time_update(&mut self, _time: f32){ /* not used */ }
-    fn playback_speed_changed(&mut self, _speed: f32) { /* not used */ }
-
-    fn track_changed(&mut self, _track: TrackInfo, _deck: usize){ /* not used */ }
-
-    fn slow_update(&mut self) { /* no-op */ }
 }
