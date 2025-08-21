@@ -579,7 +579,7 @@ impl BeatKeeper {
                     Ok(event) => {
                         if let Some(path) = event.paths.first() {
                             let path = path.to_string_lossy().replace("\\", "/");
-                            if let Some(i) = self.anlz_paths.iter().position(|x| x.value == path) {
+                            if let Some(i) = self.anlz_paths.iter().position(|x| x.value == path || x.value.replace(".DAT", ".EXT") == path) {
                                 anlz_file_updates[i] = true;
                             }
                         }
@@ -599,10 +599,16 @@ impl BeatKeeper {
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
                             println!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e);
                         });
+                        self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
+                            println!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e);
+                        });
                         // println!("Unset watcher: {}", &self.anlz_paths[i].value);
                         self.anlz_paths[i].set(path);
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
                             println!("Failed to watch path {}: {}", &self.anlz_paths[i].value, e);
+                        });
+                        self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
+                            println!("Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e);
                         });
                         println!("Set watcjer: {}", &self.anlz_paths[i].value);
                     }
@@ -623,7 +629,7 @@ impl BeatKeeper {
                         }
                     }
 
-                    if let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
+                    if let Ok(bytes) = std::fs::read(self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
                         let mut reader = Cursor::new(bytes);
                         let anlz = rekordcrate::anlz::ANLZ::read(&mut reader).unwrap();
                         for section in anlz.sections {

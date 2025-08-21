@@ -2,9 +2,26 @@ use std::net::UdpSocket;
 
 use rosc::{encoder::encode, OscMessage, OscPacket};
 
-use crate::{beatkeeper::TrackInfo, config::Config, log::ScopedLogger};
+use crate::{beatkeeper::TrackInfo, config::Config, log::ScopedLogger, utils::PhraseParser};
 
 use super::{ModuleCreateOutput, OutputModule};
+
+enum OutputFormat{
+    String,
+    Int,
+    Float
+}
+
+impl OutputFormat {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "string" => Some(OutputFormat::String),
+            "int" => Some(OutputFormat::Int),
+            "float" => Some(OutputFormat::Float),
+            _ => None,
+        }
+    }
+}
 
 struct MessageToggles{
     beat: bool,
@@ -18,12 +35,13 @@ struct MessageToggles{
     time: bool,
     time_master: bool,
     phrase: bool,
-    phrase_master: bool
+    phrase_master: bool,
+    phrase_output_format: OutputFormat,
 }
 
 
 impl MessageToggles{
-    fn new(conf: &Config) -> Self{
+    fn new(conf: &Config, logger: ScopedLogger) -> Self{
         MessageToggles { 
             beat: conf.get_or_default("msg.beat", false), 
             beat_div_1: conf.get_or_default("msg.beat.div_1", false), 
@@ -36,7 +54,18 @@ impl MessageToggles{
             time: conf.get_or_default("msg.time", false), 
             time_master: conf.get_or_default("msg.time_master", true), 
             phrase: conf.get_or_default("msg.phrase", false), 
-            phrase_master:  conf.get_or_default("msg.phrase_master", true)}
+            phrase_master:  conf.get_or_default("msg.phrase_master", true),
+            phrase_output_format: {
+                let fmt = conf.get_or_default("phrase_output_format", "string".to_string());
+                match OutputFormat::from_str(&fmt) {
+                    Some(format) => format,
+                    None => {
+                        logger.err(&format!("Unknown phrase output format: {fmt}"));
+                        OutputFormat::String
+                    }
+                }
+            }
+        }
     } 
 }
 
@@ -71,6 +100,15 @@ impl Osc {
         let packet = encode(&msg).unwrap();
         self.socket.send(&packet).unwrap();
     }
+
+    fn send_int(&mut self, addr: &str, value: i32) {
+        let msg = OscPacket::Message(OscMessage {
+            addr: addr.to_string(),
+            args: vec![rosc::OscType::Int(value)],
+        });
+        let packet = encode(&msg).unwrap();
+        self.socket.send(&packet).unwrap();
+    }
 }
 
 impl Osc {
@@ -94,8 +132,8 @@ impl Osc {
         Ok(Box::new(Osc {
             socket,
             info_sent: false,
-            logger,
-            message_toggles: MessageToggles::new(&conf),
+            logger: logger.clone(),
+            message_toggles: MessageToggles::new(&conf, logger),
             send_period: conf.get_or_default("send_every_nth", 2),
             send_period_counter: 0,
         }))
@@ -203,13 +241,13 @@ impl OutputModule for Osc {
 
     fn phrase_changed_master(&mut self, phrase: &str) {
         if self.message_toggles.phrase_master{
-            self.send_string("/phrase/master/current", phrase);
+            self.output_phrase("/phrase/master/current", phrase);
         }
     }
 
     fn next_phrase_changed_master(&mut self, phrase: &str) {
         if self.message_toggles.phrase_master{
-            self.send_string("/phrase/master/next", phrase);
+            self.output_phrase("/phrase/master/next", phrase);
         }
     }
 
@@ -221,7 +259,7 @@ impl OutputModule for Osc {
 
     fn phrase_changed(&mut self, phrase: &str, deck: usize) {
         if self.message_toggles.phrase{
-            self.send_string(&format!("/phrase/{deck}/current"), phrase);
+            self.output_phrase(&format!("/phrase/{deck}/current"), phrase);
         }
     }
 
@@ -237,4 +275,16 @@ impl OutputModule for Osc {
         }
     }
 
+    
+
+}
+
+impl Osc{
+    fn output_phrase(&mut self, addr: &str, phrase: &str){
+        match self.message_toggles.phrase_output_format {
+            OutputFormat::String => self.send_string(addr, phrase),
+            OutputFormat::Int => self.send_int(addr, PhraseParser::phrase_name_to_index(phrase)),
+            OutputFormat::Float => self.send_float(addr, PhraseParser::phrase_name_to_index(phrase) as f32),
+        }
+    }
 }

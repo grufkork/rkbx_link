@@ -34,6 +34,9 @@ osc.destination 127.0.0.1:4460
 # Not all apps can handle 120*n messages per second
 osc.send_every_nth 2
 
+# string, int, float
+osc.phrase_output_format string
+
 # Enable/disable messages to save bandwidth
 # Those with "master" enable sending for the currently active deck
 # Those without enable sending of all decks

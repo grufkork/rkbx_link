@@ -46,4 +46,15 @@ impl PhraseParser {
             rekordcrate::anlz::Mood::High => 2,
         }
     }
+
+    pub fn phrase_name_to_index (phrase_name: &str) -> i32{
+        match phrase_name {
+            "Intro" | "Intro 1" | "Intro 2" => 0,
+            "Verse 1" | "Verse 2" | "Verse 3" | "Verse 4" | "Verse 5" | "Verse 6" | "Up 1" | "Up 2" | "Up 3" => 1,
+            "Chorus" | "Chorus 1" | "Chorus 2" => 2,
+            "Bridge" | "Down" => 3,
+            "Outro" | "Outro 1" | "Outro 2" => 4,
+            _ => panic!("Unknown phrase name: {}", phrase_name),
+        }
+    }
 }
