@@ -48,40 +48,81 @@ impl SACN
         let bind_str: Option<String> = conf.get("source");
         let local_addr = match bind_str {
             Some(s) => {
-                // If the string contains a port, parse directly.
-                // Otherwise, let the system choose.
-                if s.contains(':') {
-                    s.parse::<SocketAddr>().expect("Invalid sACN bind addr")
-                } else {
-                    SocketAddr::new(
-                    s.parse::<IpAddr>().expect("Invalid sACN bind IP"),
-                    0,
-                    )
+            if s.contains(':') {
+                match s.parse::<SocketAddr>() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    logger.err(&format!("Invalid sACN bind addr '{}': {}", s, e));
+                    return Err(());
+                }
+                }
+            } else {
+                match s.parse::<IpAddr>() {
+                Ok(ip) => SocketAddr::new(ip, 0),
+                Err(e) => {
+                    logger.err(&format!("Invalid sACN bind IP '{}': {}", s, e));
+                    return Err(());
+                }
                 }
             }
-            None => SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0),
+            }
+            None => {
+                logger.warn("source not specified, defaulting to 0.0.0.0:0");
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)
+            },
         };
 
-        let mut src = SacnSource::with_ip(&source_name, local_addr).expect("Failed to create SacnSource");
+        let mut src = match SacnSource::with_ip(&source_name, local_addr) {
+            Ok(src) => src,
+            Err(e) => {
+            logger.err(&format!("Failed to create SacnSource: {}", e));
+            return Err(());
+            }
+        };
 
         // Mode
         let mode_str = conf.get_or_default("mode", String::from("multicast"));
-        let mode = match mode_str.to_ascii_lowercase().as_str() { "unicast" => Mode::Unicast, _ => Mode::Multicast };
+        let mode = match mode_str.to_ascii_lowercase().as_str() {
+            "unicast" => Mode::Unicast,
+            "multicast" => Mode::Multicast,
+            _ => {
+            logger.warn("unknown mode set, using Multicast");
+            Mode::Multicast
+            }
+        };
 
         // Universe
         let mut universe: u16 = conf.get_or_default("universe", 1u16);
-        if universe == 0 { universe = 1; }
-        src.register_universe(universe).expect("register_universe failed");
+        if universe == 0 {
+            logger.warn("Universe 0 is invalid, using 1");
+            universe = 1;
+        }
+        if let Err(e) = src.register_universe(universe) {
+            logger.err(&format!("register_universe failed: {}", e));
+            return Err(());
+        }
 
         // Start slot (1-511 so we have 2 slots available)
         let mut start_slot: usize = conf.get_or_default("start_channel", 1u16) as usize;
-        if start_slot < 1 { start_slot = 1; }
-        if start_slot > 511 { start_slot = 511; }
+        if start_slot < 1 {
+            logger.warn("start_channel < 1 invalid, using 1");
+            start_slot = 1;
+        }
+        if start_slot > 511 {
+            logger.warn("start_channel > 511 invalid, using 511");
+            start_slot = 511;
+        }
 
         // Priority
         let mut priority: u8 = conf.get_or_default("priority", 100u8);
-        if priority < 1 { priority = 1; }
-        if priority > 200 { priority = 200; }
+        if priority < 1 {
+            logger.warn("priority < 1 invalid, using 1");
+            priority = 1;
+        }
+        if priority > 200 {
+            logger.warn("priority > 200 invalid, using 200");
+            priority = 200;
+        }
 
         // Targets
         let mut targets: Vec<SocketAddr> = Vec::new();
@@ -146,13 +187,13 @@ fn send(&mut self) {
         match self.mode {
             Mode::Multicast => {
                 self.logger.debug(&format!(
-                    "sACN(multicast) sending {} -> universe {} ({} bytes)",
+                    "sending multicast @{} -> universe {} ({} bytes)",
                     self.local_addr, self.universe, len
                 ));
             }
             Mode::Unicast => {
                 self.logger.debug(&format!(
-                    "sACN(unicast) sending {} -> {} targets, universe {} ({} bytes)",
+                    "sending unicast @{} -> {} targets, universe {} ({} bytes)",
                     self.local_addr, self.targets.len(), self.universe, len
                 ));
             }

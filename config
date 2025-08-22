@@ -22,7 +22,22 @@ keeper.keep_warm true
 keeper.decks 2
 
 # == sACN ==
+# Enable sACN output
 sacn.enabled true
+# Local address to bind for sACN
+sacn.source 0.0.0.0
+# Target address(es) for sACN packets (used for unicast)
+sacn.targets 0.0.0.0
+# sACN packet priority (1-200)
+sacn.priority 100
+# sACN universe number
+sacn.universe 1
+# DMX start channel for sACN output
+sacn.start_channel 1
+# sACN transmission mode: multicast or unicast
+sacn.mode multicast
+# Source name for sACN packets
+sacn.source_name rkbx_link
 
 # == Open Sound Control ==
 osc.enabled true
