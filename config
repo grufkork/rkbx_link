@@ -3,7 +3,7 @@ app.licensekey evaluation
 # Check for updates at startup (enable only if you have a license)
 app.auto_update false
 # Show debug logs
-app.debug true
+app.debug false
 
 # Rekordbox version to target
 keeper.rekordbox_version 7.1.4
