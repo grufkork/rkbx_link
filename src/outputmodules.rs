@@ -6,6 +6,7 @@ pub mod abletonlink;
 pub mod file;
 pub mod osc;
 pub mod setlist;
+pub mod sacn;
 
 pub trait OutputModule {
 
