@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use sacn::packet::ACN_SDT_MULTICAST_PORT;
 use sacn::source::SacnSource;
 
-use crate::{beatkeeper::TrackInfo, config::Config, log::ScopedLogger};
+use crate::{config::Config, log::ScopedLogger};
 use super::ModuleCreateOutput;
 use super::OutputModule;
 
@@ -22,7 +22,6 @@ use super::OutputModule;
 /// - +0 : BPM (u8). Capped to 250. Values > 250 are sent as 250.
 /// - +1 : Beat absolute counter (u8). Wraps 0..=255.
 ///
-
 pub struct SACN {
     src: SacnSource,
     mode: Mode,
@@ -48,23 +47,23 @@ impl SACN
         let bind_str: Option<String> = conf.get("source");
         let local_addr = match bind_str {
             Some(s) => {
-            if s.contains(':') {
-                match s.parse::<SocketAddr>() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    logger.err(&format!("Invalid sACN bind addr '{}': {}", s, e));
-                    return Err(());
+                if s.contains(':') {
+                    match s.parse::<SocketAddr>() {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            logger.err(&format!("Invalid sACN bind addr '{}': {}", s, e));
+                            return Err(());
+                        }
+                    }
+                } else {
+                    match s.parse::<IpAddr>() {
+                        Ok(ip) => SocketAddr::new(ip, 0),
+                        Err(e) => {
+                            logger.err(&format!("Invalid sACN bind IP '{}': {}", s, e));
+                            return Err(());
+                        }
+                    }
                 }
-                }
-            } else {
-                match s.parse::<IpAddr>() {
-                Ok(ip) => SocketAddr::new(ip, 0),
-                Err(e) => {
-                    logger.err(&format!("Invalid sACN bind IP '{}': {}", s, e));
-                    return Err(());
-                }
-                }
-            }
             }
             None => {
                 logger.warn("source not specified, defaulting to 0.0.0.0:0");
@@ -75,8 +74,8 @@ impl SACN
         let mut src = match SacnSource::with_ip(&source_name, local_addr) {
             Ok(src) => src,
             Err(e) => {
-            logger.err(&format!("Failed to create SacnSource: {}", e));
-            return Err(());
+                logger.err(&format!("Failed to create SacnSource: {}", e));
+                return Err(());
             }
         };
 
@@ -86,8 +85,8 @@ impl SACN
             "unicast" => Mode::Unicast,
             "multicast" => Mode::Multicast,
             _ => {
-            logger.warn("unknown mode set, using Multicast");
-            Mode::Multicast
+                logger.warn("unknown mode set, using Multicast");
+                Mode::Multicast
             }
         };
 
@@ -131,7 +130,11 @@ impl SACN
             for ip in list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 // Default to the standard ACN port if no port was given
                 let sa = if ip.contains(':') { ip.to_string() } else { format!("{}:{}", ip, ACN_SDT_MULTICAST_PORT) };
-                if let Ok(sa) = sa.parse::<SocketAddr>() { targets.push(sa); }
+                if let Ok(sa) = sa.parse::<SocketAddr>() { 
+                    targets.push(sa); 
+                } else {
+                    logger.err(&format!("Invalid sACN target address '{}'", ip));
+                }
             }
         }
         logger.info(&format!(
@@ -163,26 +166,26 @@ impl SACN
         }))
     }
 
-fn send(&mut self) {
-    //only send up to the bytes we actually use (using a low start_slot prevents sending the whole universe on update)
-    let last_slot = (self.start_slot + 1).min(512);
-    let len = 1 + last_slot; // +1 for start code
-    let data: &[u8] = &self.dmx[..len];
+    fn send(&mut self) {
+        //only send up to the bytes we actually use (using a low start_slot prevents sending the whole universe on update)
+        let last_slot = (self.start_slot + 1).min(512);
+        let len = 1 + last_slot; // +1 for start code
+        let data: &[u8] = &self.dmx[..len];
 
-    match self.mode {
-        Mode::Multicast => {
-            let _ = self
-                .src
-                .send(&[self.universe], data, Some(self.priority), None, None);
-        }
-        Mode::Unicast => {
-            for &dst in &self.targets {
+        match self.mode {
+            Mode::Multicast => {
                 let _ = self
                     .src
-                    .send(&[self.universe], data, Some(self.priority), Some(dst), None);
+                    .send(&[self.universe], data, Some(self.priority), None, None);
+                }
+            Mode::Unicast => {
+                for &dst in &self.targets {
+                    let _ = self
+                        .src
+                        .send(&[self.universe], data, Some(self.priority), Some(dst), None);
+                    }
             }
         }
-    }
 
         match self.mode {
             Mode::Multicast => {
@@ -197,10 +200,10 @@ fn send(&mut self) {
                     self.local_addr, self.targets.len(), self.universe, len
                 ));
             }
+        }
     }
-}
 
-	
+
 
     #[inline]
     fn write_u8_slot(&mut self, slot_1based: usize, value: u8) {
@@ -214,9 +217,8 @@ fn send(&mut self) {
 impl OutputModule for SACN {
     fn bpm_changed_master(&mut self, bpm: f32){
         let mut v = bpm.round() as i32;
-        if v < 0 { v = 0; }
-        if v > 250 { v = 250; }
-        self.write_u8_slot(self.start_slot + 0, v as u8); //only send/flush on beat change and slow update to avoid congestion.
+        v = v.clamp(0, 250);
+        self.write_u8_slot(self.start_slot, v as u8); //only send/flush on beat change and slow update to avoid congestion.
         self.logger.debug(&format!("sACN: BPM changed to {}", v));
     }
 
