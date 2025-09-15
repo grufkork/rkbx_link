@@ -88,8 +88,7 @@ impl Osc {
             addr: addr.to_string(),
             args: vec![rosc::OscType::Float(value)],
         });
-        let packet = encode(&msg).unwrap();
-        self.socket.send(&packet).unwrap();
+        self.send(msg);
     }
 
     fn send_string(&mut self, addr: &str, value: &str) {
@@ -97,8 +96,7 @@ impl Osc {
             addr: addr.to_string(),
             args: vec![rosc::OscType::String(value.to_string())],
         });
-        let packet = encode(&msg).unwrap();
-        self.socket.send(&packet).unwrap();
+        self.send(msg);
     }
 
     fn send_int(&mut self, addr: &str, value: i32) {
@@ -106,8 +104,20 @@ impl Osc {
             addr: addr.to_string(),
             args: vec![rosc::OscType::Int(value)],
         });
-        let packet = encode(&msg).unwrap();
-        self.socket.send(&packet).unwrap();
+        self.send(msg);
+    }
+
+    fn send(&mut self, msg: OscPacket) {
+        let packet = match encode(&msg){
+            Ok(packet) => packet,
+            Err(e) => {
+                self.logger.err(&format!("Failed to encode OSC message: {e}"));
+                return;
+            }
+        };
+        if let Err(e) = self.socket.send(&packet) {
+            self.logger.err(&format!("Failed to send OSC message: {e}"));
+        };
     }
 }
 
@@ -236,7 +246,7 @@ impl OutputModule for Osc {
             };
             self.logger
                 .info(&format!("Sending {source_addr} -> {target_addr}"));
-        }
+            }
     }
 
     fn phrase_changed_master(&mut self, phrase: &str) {
@@ -274,9 +284,6 @@ impl OutputModule for Osc {
             self.send_float(&format!("/phrase/{deck}/countin"), beats as f32);
         }
     }
-
-    
-
 }
 
 impl Osc{

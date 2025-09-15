@@ -14,8 +14,6 @@ keeper.slow_update_every_nth 10
 # Delay compensation in ms
 # Positive values advance the output
 keeper.delay_compensation 0
-# Number of updates to ignore bar-sized jitter for
-keeper.bar_jitter_tolerance 10
 # Keep track of non-master decks. Uses more CPU, but ensures SIGNIFICANTLY smoother transitions between decks
 keeper.keep_warm true
 # Number of active decks
@@ -23,7 +21,7 @@ keeper.decks 2
 
 # == sACN ==
 # Enable sACN output
-sacn.enabled true
+sacn.enabled false
 # Local address to bind for sACN
 sacn.source 0.0.0.0
 # Target address(es) for sACN packets (used for unicast)
@@ -51,7 +49,7 @@ osc.destination 127.0.0.1:4460
 osc.send_every_nth 2
 
 # string, int, float
-osc.phrase_output_format string
+osc.phrase_output_format int
 
 # Enable/disable messages to save bandwidth
 # Those with "master" enable sending for the currently active deck

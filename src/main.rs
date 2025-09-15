@@ -28,7 +28,7 @@ const REPO: &str = "grufkork/rkbx_link/refs/heads/master";
 
 fn main() {
     println!();
-    println!("=====================");
+    println!("======================================================================");
     println!();
     println!("Rekordbox Link v{VERSION}");
     println!("Updates          https://github.com/grufkork/rkbx_link/releases/latest");
@@ -36,7 +36,7 @@ fn main() {
     println!("Repo and docs    https://github.com/grufkork/rkbx_link");
     println!("Missing a feature? Spotted a bug? Just shoot me a message!");
     println!();
-    println!("=====================");
+    println!("======================================================================");
     println!();
 
     let logger = Rc::new(Logger::new(true));
@@ -208,8 +208,8 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offset
         logger.info("Downloading offsets...");
         match get_licensed_file("offsets", license, &logger) {
             Ok(offsets) => {
-                std::fs::write("./data/offsets", offsets).unwrap();
-                std::fs::write("./data/version_offsets", new_offset_version.to_string()).unwrap();
+                std::fs::write("./data/offsets", offsets).expect("Failed to write offsets file!");
+                std::fs::write("./data/version_offsets", new_offset_version.to_string()).expect("Failed to write version_offsets file!");
                 logger.good("Offsets updated");
             }
             Err(e) => {

@@ -585,42 +585,46 @@ impl BeatKeeper {
                         }
                     }
                     Err(e) => {
-                        println!("Watcher error: {e}");
+                        self.logger.err(&format!("Watcher error: {e}"));
                     }
                 }
             }
 
             for (i, path) in rb.get_anlz_paths()?.into_iter().enumerate() {
                 if self.anlz_paths[i].value != path || anlz_file_updates[i] {
-                    // println!("Reloading {i}");
                     if self.anlz_paths[i].value != path {
-                        // println!("Anlz path changed: {}", &self.anlz_paths[i].value);
+                        self.logger.debug(&format!("Deck {i} ANLZ file path changed: {path}"));
 
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
-                            println!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e);
+                            self.logger.err(&format!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
                         });
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
-                            println!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e);
+                            self.logger.err(&format!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
                         });
-                        // println!("Unset watcher: {}", &self.anlz_paths[i].value);
                         self.anlz_paths[i].set(path);
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            println!("Failed to watch path {}: {}", &self.anlz_paths[i].value, e);
+                            self.logger.err(&format!("Failed to watch path {}: {}", &self.anlz_paths[i].value, e));
                         });
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            println!("Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e);
+                            self.logger.err(&format!("Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
                         });
-                        println!("Set watcjer: {}", &self.anlz_paths[i].value);
                     }
 
-                    // TODO there's probably loads of things that can go wrong here
+                    // TODO watch out here, there's probably loads of things that can go wrong
                     let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value) else {
-                        println!("Failed to read anlz file: {}", &self.anlz_paths[i].value);
+                        self.logger.err(&format!("Failed to read anlz file: {}", &self.anlz_paths[i].value));
                         continue;
                     };
                     let mut reader = Cursor::new(bytes);
-                    let anlz = rekordcrate::anlz::ANLZ::read(&mut reader).unwrap();
+                    let anlz = match rekordcrate::anlz::ANLZ::read(&mut reader){
+                        Ok(a) => a,
+                        Err(e) => {
+                            self.logger.err(&format!("Failed to parse DAT file for song {}, path {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value));
+                            continue;
+                        }
+                    };
                     for section in anlz.sections {
+                        #[allow(clippy::single_match)]
                         match section.content {
                             anlz::Content::BeatGrid(grid) => {
                                 self.track_trackers[i].beatgrid = Some(grid);
@@ -629,19 +633,30 @@ impl BeatKeeper {
                         }
                     }
 
-                    if let Ok(bytes) = std::fs::read(self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
-                        let mut reader = Cursor::new(bytes);
-                        let anlz = rekordcrate::anlz::ANLZ::read(&mut reader).unwrap();
-                        for section in anlz.sections {
-                            match section.content {
-                                anlz::Content::SongStructure(phrases) => {
-                                    self.track_trackers[i].songstructure = Some(phrases.data);
-                                }
-                                _ => (),
-                            }
+                    let bytes = match std::fs::read(self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            self.logger.err(&format!("Failed to read EXT file for song {}, {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value));
+                            continue;
                         }
-                    } else {
-                        println!("Failed to read EXT file: {}", &self.anlz_paths[i].value);
+                    };
+
+                    let mut reader = Cursor::new(bytes);
+                    let anlz = match rekordcrate::anlz::ANLZ::read(&mut reader) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            self.logger.err(&format!("Failed to parse EXT file for song {}, path {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value.replace(".DAT", ".EXT")));
+                            continue;
+                        }
+                    };
+                    for section in anlz.sections {
+                        #[allow(clippy::single_match)]
+                        match section.content {
+                            anlz::Content::SongStructure(phrases) => {
+                                self.track_trackers[i].songstructure = Some(phrases.data);
+                            }
+                            _ => (),
+                        }
                     }
                 }
             }
