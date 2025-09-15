@@ -2,6 +2,7 @@
 # Check the readme for more details.
 
 
+# == Beatkeeper ==
 # Replace "evaluation" with your license key
 app.licensekey evaluation
 # Check for updates at startup (enable only if you have a license)
@@ -46,6 +47,7 @@ osc.phrase_output_format int
 # Enable/disable messages to save bandwidth
 # Those with "master" enable sending for the currently active deck
 # Those without enable sending of all decks
+# See readme for details
 osc.msg.beat_master true
 osc.msg.beat_master.div_1 false
 osc.msg.beat_master.div_2 false
