@@ -5,6 +5,19 @@ Export live and rock-solid timing, phrase and track info to sync live lights and
 
 With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.1.3. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially making loads of dosh, consider extra support on my [ko-fi](https://ko-fi.com/grufkork).
 
+## Contents
+- [rkbx_link for Rekordbox](./README.md#rkbx_link-for-rekordbox)
+  - [Usage & Setup](./README.md#usage--setup)
+  - [Supported Versions](./README.md#supported-versions-with-license)
+- [Configuration](./README.md#configuration-and-output-modules)
+  - [Beatkeeper](./README.md#beatkeeper-settings-for-tracking)
+  - [Ableton Link](./README.md#ableton-link)
+  - [OSC](./README.md#open-sound-control-osc)
+  - [Track to file](./README.md#track-to-file)
+  - [Setlist to file](./README.md#setlist-to-file)
+- [All OSC addresses](./README.md#all-osc-addresses)
+- [Troubleshooting](./README.md#troubleshooting)
+
 ## Usage & Setup
 Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file:
 - Set the Rekordbox version (`keeper.rekordbox_version`) you are using
@@ -21,7 +34,7 @@ Eventually you can also tune:
 
 | Rekordbox Version  |
 | ----- |
-|  `7.2.2`, `7.1.4` |
+| `7.2.2`, `7.1.4` |
 | `6.8.5` |
 
 ![logo](https://3gg.se/products/rkbx_link/logo.png "Logo")
