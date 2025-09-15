@@ -1,3 +1,7 @@
+# rkbx_link configuration
+# Check the readme for more details.
+
+
 # Replace "evaluation" with your license key
 app.licensekey evaluation
 # Check for updates at startup (enable only if you have a license)
@@ -19,23 +23,12 @@ keeper.keep_warm true
 # Number of active decks
 keeper.decks 2
 
-# == sACN ==
-# Enable sACN output
-sacn.enabled false
-# Local address to bind for sACN
-sacn.source 0.0.0.0
-# Target address(es) for sACN packets (used for unicast)
-sacn.targets 0.0.0.0
-# sACN packet priority (1-200)
-sacn.priority 100
-# sACN universe number
-sacn.universe 1
-# DMX start channel for sACN output
-sacn.start_channel 1
-# sACN transmission mode: multicast or unicast
-sacn.mode multicast
-# Source name for sACN packets
-sacn.source_name rkbx_link
+
+# == Ableton Link ==
+link.enabled true
+# Cumulative time error before forcing a correction
+link.cumulative_error_tolerance 0.05
+
 
 # == Open Sound Control ==
 osc.enabled true
@@ -47,8 +40,7 @@ osc.destination 127.0.0.1:4460
 # Increasing this saves bandwidth
 # Not all apps can handle 120*n messages per second
 osc.send_every_nth 2
-
-# string, int, float
+# Format for phrase output [string, int, float]
 osc.phrase_output_format int
 
 # Enable/disable messages to save bandwidth
@@ -68,16 +60,12 @@ osc.msg.beat.div_4 false
 osc.msg.time false
 osc.msg.phrase false
 
-# == Ableton Link ==
-link.enabled true
-# Cumulative time error before forcing a correction
-link.cumulative_error_tolerance 0.05
-
 
 # == Write current track to file ==
 file.enabled false
 # Path to write to
 file.filename current_track.txt
+
 
 # == Setlist logging with timestamps ==
 setlist.enabled false
@@ -85,3 +73,22 @@ setlist.enabled false
 setlist.separator -
 # Path to write to
 setlist.filename setlist.txt
+
+
+# == sACN ==
+# Enable sACN output
+sacn.enabled false
+# Local address to bind for sACN
+sacn.source 0.0.0.0
+# Target address(es) for sACN packets (used for unicast)
+sacn.targets 0.0.0.0
+# sACN packet priority (1-200)
+sacn.priority 100
+# sACN universe number
+sacn.universe 1
+# DMX start channel for sACN output
+sacn.start_channel 1
+# sACN transmission mode: multicast or unicast
+sacn.mode multicast
+# Source name for sACN packets
+sacn.source_name rkbx_link
