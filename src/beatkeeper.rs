@@ -596,23 +596,24 @@ impl BeatKeeper {
                         self.logger.debug(&format!("Deck {i} ANLZ file path changed: {path}"));
 
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
+                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
                         });
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
+                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
                         });
                         self.anlz_paths[i].set(path);
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Failed to watch path {}: {}", &self.anlz_paths[i].value, e));
+                            self.logger.err(&format!("Deck {i}: Failed to watch path for{}: {}", &self.anlz_paths[i].value, e));
                         });
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
+                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
                         });
                     }
 
                     // TODO watch out here, there's probably loads of things that can go wrong
                     let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value) else {
-                        self.logger.err(&format!("Failed to read anlz file: {}", &self.anlz_paths[i].value));
+                        self.logger.err(&format!("Failed to read anlz file for deck {i}: {}", &self.anlz_paths[i].value));
+                        self.logger.err("If you are loading a new Tidal track for the first time, eject and load it again.");
                         continue;
                     };
                     let mut reader = Cursor::new(bytes);
