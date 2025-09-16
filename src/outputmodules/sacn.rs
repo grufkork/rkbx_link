@@ -16,7 +16,7 @@ use super::OutputModule;
 /// - `start_channel` (u16): DMX start/offset (1..=511), default 1. (We need 2 slots: beat count and BPM.)
 /// - `targets` (String): comma-separated IPv4 list for unicast. Example: "192.168.0.50,192.168.0.51".
 /// - `priority` (u8): sACN priority 1..200, default 100.
-/// - `source_name` (String): up to 63 ASCII chars shown by receivers. Default: "rkbx link".
+/// - `source_name` (String): up to 63 ASCII chars shown by receivers. Default: "rkbx_link".
 ///
 /// Slot mapping (starting at `start_channel`):
 /// - +0 : BPM (u8). Capped to 250. Values > 250 are sent as 250.
@@ -43,7 +43,7 @@ impl SACN
 {
     pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
         // Local bind address
-        let source_name = conf.get_or_default("source_name", String::from("rkbx link"));
+        let source_name = conf.get_or_default("source_name", String::from("rkbx_link"));
         let bind_str: Option<String> = conf.get("source");
         let local_addr = match bind_str {
             Some(s) => {
