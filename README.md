@@ -142,6 +142,17 @@ Separator to use between title and artist in the setlist file. Default is `-`.
 - `setlist.filename <string>`
 Where to write the setlist file. Default is `setlist.txt` in the same directory as the executable.
 
+## sACN
+Sends the current tempo as an int on channel `start_channel` and a looping counter which increases on every beat on `start_channel+1`. Default name is "rkbx_link".
+- `sacn.enabled <true/false>` Enables sACN output
+- `sacn.source <x.x.x.x>` Local address to bind
+- `sacn.targets <x.x.x.x,x.x.x.x,...>` Comma-separated list of target IPs
+- `sacn.priority <int (1..200)>` sACN priority
+- `sacn.start_channel <int (1..=511)>` 1-indexed DMX channel offset. Needs two channels to send both tempo and beats.
+- `sacn.universe <int (1..=63999(` sACN universe to transmit to 
+- `sacn.mode <multicast|unicast>` Default: multicast
+- `sacn.source_name <string>` Max 63 ASCII chars to show as name of sender
+
 # All OSC Addresses
 `[deck]` can be `master` for the current active deck or an index (`1|2|3|4`) for a specific deck, if enabled. 
  - `/bpm/[deck]/current` (float) Current BPM of the master deck
