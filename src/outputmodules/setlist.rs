@@ -104,8 +104,9 @@ impl OutputModule for Setlist {
                 track.artist,
                 self.separator,
                 track.title
-            )
-            .expect("Unable to write to file");
+            ).unwrap_or_else(|e| {
+                self.logger.err(&format!("Failed to write to setlist file: {e}"));
+            });
         } else {
             self.logger.err("Failed to open setlist file for writing!");
         }
