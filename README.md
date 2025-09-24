@@ -10,23 +10,25 @@ With the download of this software you will receive an evaluation license with o
 <details>
   <summary>Contents</summary>
 
-  - [rkbx_link for Rekordbox](./README.md#rkbx_link-for-rekordbox)
-    - [Usage & Setup](./README.md#usage--setup)
-    - [Supported Versions](./README.md#supported-versions-with-license)
-  - [Configuration](./README.md#configuration-and-output-modules)
-    - [Beatkeeper](./README.md#beatkeeper-settings-for-tracking)
-    - [Ableton Link](./README.md#ableton-link)
-    - [OSC](./README.md#open-sound-control-osc)
-    - [Track to file](./README.md#track-to-file)
-    - [Setlist to file](./README.md#setlist-to-file)
-    - [sACN](./README.md#sacn)
-  - [All OSC addresses](./README.md#all-osc-addresses)
-  - [Troubleshooting](./README.md#troubleshooting)
+  - [rkbx_link for Rekordbox](#rkbx_link-for-rekordbox)
+    - [Usage & Setup](#usage--setup)
+    - [Supported Versions](#supported-versions-with-license)
+  - [Supported protocols](#supported-protocols)
+  - [Configuration](#configuration)
+    - [App Settings](#app-settings)
+    - [Beatkeeper](#beatkeeper-settings-for-tracking)
+    - [Ableton Link](#ableton-link)
+    - [OSC](#open-sound-control-osc)
+    - [Track to file](.#track-to-file)
+    - [Setlist to file](#setlist-to-file)
+    - [sACN](#sacn)
+  - [All OSC addresses](#all-osc-addresses)
+  - [Troubleshooting](#troubleshooting)
 
 </details>
 
 ## Usage & Setup
-Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file:
+Download the latest version from [the releases](https://github.com/grufkork/rkbx_link/releases/latest). Unzip and edit the `config` file using notepad or similar:
 - Set the Rekordbox version (`keeper.rekordbox_version`) you are using
 - Set the correct numbers of decks (`keeper.decks`) (2 or 4)
 - Enable the output modules you want to use, such as `link.enabled` or `osc.enabled`.
@@ -34,26 +36,30 @@ Then run `rkbx_link.exe` to start the program. It will automatically connect to 
 
 Check the end of this document for troubleshooting tips.
 
-Eventually you can also tune:
+Some other settings you will probably want to tune:
 - `keeper.delay_compensation` to compensate for latency in your audio interface, lights or network. You can use both positive and negative values.
 
 ## Supported versions (with license)
 
 | Rekordbox Version  |
 | ----- |
-| `7.2.2`, `7.1.4` |
+| `7.2.3`, `7.2.2`, `7.1.4` |
+| [`6.8.5` will be added soon] |
 
-## What does it do?
-When run on the same computer as an instance of Rekordbox, the program reads the current timing data and sends this over your protocol of choice. By default it outputs a 4-beat aligned Ableton Link session, but it can also transmit equivalent data over OSC.
+# Supported protocols
+These are the available output modules together with what data can be sent with each. Transport export refers to sending the current beat timing, Track info is Title/Album/Artist and Phrase is the phrase analysis you can see under the waveform.
+- Ableton Link (master deck transport)
+- OSC (transport of any decks, phrases, track info)
+- sACN (master deck transport)
+- Setlist to file (logs master deck title/artist to a file and time when played)
+- Track to file (stores the current track info in a file for reading in other programs)
 
-The program does not interact with the audio stream in any way, but reads values through memory. It is therefore extremely accurate (provided your beatgrids are correct!)
+For more details on how to configure them, check the next secion.
 
-## Why?
-Rekordbox's Ableton Link integration only allows for receiving a signal, not extracting it. 
+# Configuration
+Here's in detail how to configure the app, beat tracking and output modules. The configuration is stored next to the executable in a text file named `config`.
 
-# Configuration and output modules
-Listed below are all available modules and how to configure them. You enable and disable them in the `config` file.
-
+## App settings
 - `app.license <string>`
 Enter your license key here to get support for the latest Rekordbox versions. Otherwise leave it empty.
 
@@ -68,7 +74,7 @@ Enter the version of Rekordbox to target (eg. 6.8.5 or 7.2.2). You can see avail
 Number of updates per second to send. Default is 120Hz, which results in between 60Hz and 120Hz updates per second due to Windows' sleep granularity. You can set this lower if you want to save CPU usage, but it might result in less accurate timing.
 
 - `keeper.slow_update_every_nth <int>`
-How often to read additional data from Rekordbox. Saves a bit of CPU usage if increased, but will not really affect worst-case performance. Default is `10`, meaning every 10th update will read the current track name and artist.
+How often to read non-time-critical data from Rekordbox. Saves a bit of CPU usage if increased, but will not really affect worst-case performance. Default is `10`, meaning every 10th update will read "heavier" values like the current track name and artist.
 
 - `keeper.delay_compensation <float>`
 Time in milliseconds to shift the output. Used to compensate for latency in audio, network, lights etc. Can be both negative and positive to either delay the signal or compensate for latency down the chain. If your Rekordbox audio output is before your eg. lights, increase this. If Rekordbox audio lags behind, set this to negative values.
@@ -171,6 +177,9 @@ Sends the current tempo as an int on channel `start_channel` and a looping count
 
 # Troubleshooting
 Try the following if you run into issues. If you even after going through all these still are having problems, please [open an issue](https://github.com/grufkork/rkbx_link/issues/new) on GitHub.
+
+### I get "Failed to read anlz file for deck #"
+This is a known issue mostly when loading tracks for the first time from streaming services. Eject and reload the track and it should be fine. The underlying cause is that the analysis file doesn't seem to yet properly exist when a non-analysed track is loaded for the first time. Should be fixable, and will probably be soon.
 
 ### The program fails to connect to Rekordbox
 - Make sure you have selected the correct Rekordbox version in the config file.
