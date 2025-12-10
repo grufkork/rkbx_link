@@ -75,7 +75,8 @@ pub struct Osc {
     logger: ScopedLogger,
     message_toggles: MessageToggles,
     send_period: i32,
-    send_period_counter: i32
+    send_period_counter: i32,
+    last_error_logged: std::time::Instant,
 }
 
 
@@ -116,7 +117,11 @@ impl Osc {
             }
         };
         if let Err(e) = self.socket.send(&packet) {
-            self.logger.err(&format!("Failed to send OSC message: {e}"));
+            // Only log errors once every 5 seconds to avoid spam
+            if self.last_error_logged.elapsed() >= std::time::Duration::from_secs(5) {
+                self.logger.err(&format!("Failed to send OSC message: {e}"));
+                self.last_error_logged = std::time::Instant::now();
+            }
         };
     }
 }
@@ -132,11 +137,12 @@ impl Osc {
                 }
             };
 
-        if let Err(e) =
-            socket.connect(conf.get_or_default("destination", "127.0.0.1:9999".to_string()))
-        {
-            logger.err(&format!("Failed to open connection to receiver: {e}"));
-            return Err(());
+        // Try to connect to destination, but don't fail if receiver isn't ready yet
+        // UDP doesn't require an established connection to send
+        let destination = conf.get_or_default("destination", "127.0.0.1:9999".to_string());
+        if let Err(e) = socket.connect(&destination) {
+            logger.warn(&format!("Could not connect to OSC receiver at {}: {}", destination, e));
+            logger.info("OSC will continue attempting to send messages");
         }
 
         Ok(Box::new(Osc {
@@ -146,6 +152,7 @@ impl Osc {
             message_toggles: MessageToggles::new(&conf, logger),
             send_period: conf.get_or_default("send_every_nth", 2),
             send_period_counter: 0,
+            last_error_logged: std::time::Instant::now(),
         }))
     }
 }
