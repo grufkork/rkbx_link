@@ -73,6 +73,11 @@ fn main() {
             "Setlist",
             outputmodules::setlist::Setlist::create,
         ),
+        ModuleDefinition::new(
+            "display",
+            "Live Display",
+            outputmodules::display::Display::create,
+        ),
     ];
 
     let mut update = config.get_or_default("app.auto_update", true);

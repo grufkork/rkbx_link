@@ -27,6 +27,13 @@ keeper.keep_warm true
 keeper.decks 2
 
 
+# == Live Display ==
+# Show periodic status updates with deck info
+display.enabled true
+# Update interval in seconds
+display.interval 3
+
+
 # == Ableton Link ==
 link.enabled true
 # Cumulative time error before forcing a correction
