@@ -13,6 +13,7 @@ mod beatkeeper;
 mod config;
 mod log;
 mod utils;
+mod macos_memory;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -75,7 +76,7 @@ fn main() {
     ];
 
     let mut update = config.get_or_default("app.auto_update", true);
-    if !Path::new("./data/offsets").exists() {
+    if !Path::new("./data/offsets-macos").exists() {
         applogger.err("No offset file found, updating...");
         update = true;
     }
@@ -84,7 +85,7 @@ fn main() {
     update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"), update);
 
     let offsets =
-        match RekordboxOffsets::from_file("./data/offsets", ScopedLogger::new(&logger, "Parser")) {
+        match RekordboxOffsets::from_file("./data/offsets-macos", ScopedLogger::new(&logger, "Parser")) {
             Ok(offsets) => offsets,
             Err(e) => {
                 applogger.err(&format!("Failed to parse offsets: {e}"));
@@ -173,7 +174,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offset
 
     let mut update_offsets = false;
 
-    if Path::new("./data/offsets").exists() {
+    if Path::new("./data/offsets-macos").exists() {
         if Path::new("./data/version_offsets").exists() {
             match fs::read_to_string("./data/version_offsets") {
                 Ok(version_offsets) => {
@@ -208,7 +209,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offset
         logger.info("Downloading offsets...");
         match get_licensed_file("offsets", license, &logger) {
             Ok(offsets) => {
-                std::fs::write("./data/offsets", offsets).expect("Failed to write offsets file!");
+                std::fs::write("./data/offsets-macos", offsets).expect("Failed to write offsets file!");
                 std::fs::write("./data/version_offsets", new_offset_version.to_string()).expect("Failed to write version_offsets file!");
                 logger.good("Offsets updated");
             }

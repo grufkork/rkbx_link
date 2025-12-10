@@ -10,9 +10,10 @@ app.auto_update false
 # Print debug logs
 app.debug false
 
+
 # == Beatkeeper ==
 # Rekordbox version to target
-keeper.rekordbox_version 7.2.2
+keeper.rekordbox_version 7.2.8
 # How often to fetch song position in Hz
 keeper.update_rate 120
 # Every nth update, perform a slow update
