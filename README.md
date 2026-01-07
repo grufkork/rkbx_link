@@ -125,7 +125,6 @@ Below are settings for toggling messages which are sent very rapidly, which migh
 If `[deck type]` is `master`, then it enables values when `[deck]` is `master`. If `[deck type]` is `n`, then it enables values for `[deck]`=`0`,`1`,`2` or `3`.
 
 The below is listed as `config key`: `what addresses it enables`
-- `osc.msg.[deck type]/beat <bool>`: `/[deck]/beat`
 - `osc.msg.[deck type]/beat/subdiv <x: float>,<y: float>,...`: `/[deck]/beat/subdiv/x`, `/[deck]/beat/subdiv/y`...
 - `osc.msg.[deck type]/beat/trigger <x: float>,<y: float>,...`: `/[deck]/beat/trigger/x`, `/[deck]/beat/trigger/y`...
 - `osc.msg.[deck type]/time <bool>`: `/[deck]/time`
@@ -137,8 +136,7 @@ The below is listed as `config key`: `what addresses it enables`
 `[deck]` can be `master` for the current active deck or an index (`1|2|3|4`) for a specific deck.
  - `/[deck]/bpm/current` (float) Current BPM of the master deck
  - `/[deck]/bpm/original` (float) Original (non-pitched) BPM of the master deck
- - `/[deck]/beat` (float) Total beat / number of beats since beat 1.1
- - `/[deck]/beat/div/[x:float]` (float) Normalised values 0-1 looping with an `x` beat intervals. 0.25 would be every 16th, 4 would be once per measure
+ - `/[deck]/beat/subdiv/[x:float]` (float) Normalised values 0-1 looping with an `x` beat intervals. 0.25 would be every 16th, 4 would be once per measure
  - `/[deck]/beat/trigger/[x:float]` (float) Triggers a message with value 1.0 with an `x` beat interval. Also send a "release" event, value `0.0` if `osc.trigger_autorelease` is enabled.
  - `/[deck]/time` (float) Current track position in seconds
  - `/[deck]/track/[title|artist|album]` (string) Title/artist/album of the current track.

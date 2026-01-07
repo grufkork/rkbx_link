@@ -24,6 +24,10 @@ impl OutputFormat {
 }
 
 struct MessageToggles{
+    /*beat: bool,
+    beat_master: bool,*/
+
+
     beat_subdivs: Vec<f32>,
     beat_master_subdivs: Vec<f32>,
     beat_triggers: Vec<f32>,
@@ -55,12 +59,16 @@ impl MessageToggles{
         });
 
         MessageToggles { 
+            /*beat: conf.get_or_default("msg.n/beat", false),
+            beat_master: conf.get_or_default("msg.master/beat", false),*/
+
+
             beat_subdivs: divs.next().unwrap(),
             beat_triggers: divs.next().unwrap(),
             beat_master_subdivs: divs.next().unwrap(),
             beat_master_triggers: divs.next().unwrap(),
 
-            beat_trigger_autorelease: conf.get_or_default("msg.trigger_autorelease", false),
+            beat_trigger_autorelease: conf.get_or_default("trigger_autorelease", false),
             time: conf.get_or_default("msg.n/time", false), 
             time_master: conf.get_or_default("msg.master/time", true), 
             phrase: conf.get_or_default("msg.n/phrase", false), 
@@ -188,6 +196,11 @@ impl OutputModule for Osc {
         if self.send_period_counter != 0 {
             return;
         }
+
+        /*if self.message_toggles.beat_master{
+            self.send_float("/master/beat", beat);
+        }*/
+
 
         for d in &self.message_toggles.beat_master_subdivs{
             let value = (beat % d) / d;
