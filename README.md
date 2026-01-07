@@ -22,7 +22,6 @@ With the download of this software you will receive an evaluation license with o
     - [Track to file](.#track-to-file)
     - [Setlist to file](#setlist-to-file)
     - [sACN](#sacn)
-  - [All OSC addresses](#all-osc-addresses)
   - [Troubleshooting](#troubleshooting)
 
 </details>
@@ -117,27 +116,35 @@ What format to send the phrase as. If int/float, it will map the phrase to an OS
 | 4 | Bridge | Down |
 | 5 | Outro | Outro 1/2 |
 
-### Frequent message toggles
-Below are settings for toggling messages which are sent very rapidly, which might overload the receiver/channel.
-- `osc.msg.beat_master <bool>`: `/beat/master`
-- `osc.msg.beat_master.div_1 <bool>`: `/beat/master/div1`
-- `osc.msg.beat_master.div_2 <bool>`: `/beat/master/div2`
-- `osc.msg.beat_master.div_4 <bool>`: `/beat/master/div4`
-- `osc.msg.beat_master.trigger.div_1 <bool>`: `/beat/master/trigger/div1`
-- `osc.msg.beat_master.trigger.div_2 <bool>`: `/beat/master/trigger/div2`
-- `osc.msg.beat_master.trigger.div_4 <bool>`: `/beat/master/trigger/div4`
-- `osc.msg.time_master <bool>`: `/time/master`
-- `osc.msg.phrase_master <bool>`: `/phrase/master/current`, `/phrase/master/next`, `/phrase/master/countin`
+- `osc.trigger_autorelease`
+If you want so emulate a button press/tap, enabling this option will make so that triggers also send an off message. On the beat `1.0` will be sent, then 1/5th subdivision later `0.0` will be sent.
 
-- `osc.msg.beat <bool>`: `/beat/[deck]`
-- `osc.msg.beat.div_1 <bool>`: `/beat/[deck]/div1`
-- `osc.msg.beat.div_2 <bool>`: `/beat/[deck]/div2`
-- `osc.msg.beat.div_4 <bool>`: `/beat/[deck]/div4`
-- `osc.msg.beat.trigger.div_1 <bool>`: `/beat/[deck]/trigger/div1`
-- `osc.msg.beat.trigger.div_2 <bool>`: `/beat/[deck]/trigger/div2`
-- `osc.msg.beat.trigger.div_4 <bool>`: `/beat/[deck]/trigger/div4`
-- `osc.msg.time <bool>`: `/time/[deck]`
-- `osc.msg.phrase <bool>`: `/phrase/[deck]/current`, `/phrase/[deck]/next`, `/phrase/[deck]/countin`
+### Frequent message toggles
+Below are settings for toggling messages which are sent very rapidly, which might overload the receiver/channel. Therefore most of them are turned off by default.
+
+If `[deck type]` is `master`, then it enables values when `[deck]` is `master`. If `[deck type]` is `n`, then it enables values for `[deck]`=`0`,`1`,`2` or `3`.
+
+The below is listed as `config key`: `what addresses it enables`
+- `osc.msg.[deck type]/beat <bool>`: `/[deck]/beat`
+- `osc.msg.[deck type]/beat/subdiv <x: float>,<y: float>,...`: `/[deck]/beat/subdiv/x`, `/[deck]/beat/subdiv/y`...
+- `osc.msg.[deck type]/beat/trigger <x: float>,<y: float>,...`: `/[deck]/beat/trigger/x`, `/[deck]/beat/trigger/y`...
+- `osc.msg.[deck type]/time <bool>`: `/[deck]/time`
+- `osc.msg.[deck type]/phrase <bool>`: `/[deck]/phrase/current`, `/[deck]/phrase/next`, `/[deck]/phrase/countin`
+- `osc.msg.[deck type]/time <bool>`: `/time/[deck]`
+- `osc.msg.[deck type]/phrase <bool>`: `/phrase/[deck]/current`, `/phrase/[deck]/next`, `/phrase/[deck]/countin`
+
+### All OSC messages/addresses
+`[deck]` can be `master` for the current active deck or an index (`1|2|3|4`) for a specific deck.
+ - `/[deck]/bpm/current` (float) Current BPM of the master deck
+ - `/[deck]/bpm/original` (float) Original (non-pitched) BPM of the master deck
+ - `/[deck]/beat` (float) Total beat / number of beats since beat 1.1
+ - `/[deck]/beat/div/[x:float]` (float) Normalised values 0-1 looping with an `x` beat intervals. 0.25 would be every 16th, 4 would be once per measure
+ - `/[deck]/beat/trigger/[x:float]` (float) Triggers a message with value 1.0 with an `x` beat interval. Also send a "release" event, value `0.0` if `osc.trigger_autorelease` is enabled.
+ - `/[deck]/time` (float) Current track position in seconds
+ - `/[deck]/track/[title|artist|album]` (string) Title/artist/album of the current track.
+ - `/[deck]/phrase/current` (float/int/string depending on config) The current phrase
+ - `/[deck]/phrase/next` (float/int/string) The next phrase coming up
+ - `/[deck]/phrase/countin` (float) Beats until the next phrase begins.
 
 ## Track to file
 - `file.enabled <true/false>`
@@ -169,19 +176,6 @@ Sends the current tempo as an int on channel `start_channel` and a looping count
 - `sacn.mode <multicast|unicast>` Default: multicast
 - `sacn.source_name <string>` Max 63 ASCII chars to show as name of sender
 
-# All OSC Addresses
-`[deck]` can be `master` for the current active deck or an index (`1|2|3|4`) for a specific deck, if enabled. 
- - `/bpm/[deck]/current` (float) Current BPM of the master deck
- - `/bpm/[deck]/original` (float) Original (non-pitched) BPM of the master deck
- - `/beat/[deck]` (float) Total beat / number of beats since beat 1.1
- - `/beat/[deck]/div[1|2|4]` (float) Normalised values 0-1 looping with 1, 2 or 4 beat intervals. 
-  - `/beat/[deck]/trigger/div[1|2|4]` (float) Value 1.0 when a beat is detected with 1, 2 or 4 beat intervals. 
- - `/beat/[deck]/div[1|2|4]` (float) Normalised values 0-1 looping with 1, 2 or 4 beat intervals. Good for making looping animations with 1-4 beat periods.
- - `/time/[deck]` (float) Current track position in seconds
- - `/track/[deck]/[title|artist|album]` (string) Title/artist/album of the current track on deck 1, 2, 3 or 4, or the master deck.
- - `/phrase/[deck]/current` (float/int/string depending on config) The current phrase
- - `/phrase/[deck]/next` (float/int/string) The next phrase coming up
- - `/phrase/[deck]/counting` (float) Beats until the next phrase begins.
 
 # Troubleshooting
 Try the following if you run into issues. If you even after going through all these still are having problems, please [open an issue](https://github.com/grufkork/rkbx_link/issues/new) on GitHub.
