@@ -46,20 +46,21 @@ osc.send_every_nth 2
 osc.phrase_output_format int
 
 # Enable/disable messages to save bandwidth
-# "Master" enables messages from the current active deck
-# The rest enable sending of all decks on separate addresses
+# "master" enables messages from the current active deck
+# "n" enables sending of all decks on separate addresses
 # See readme for details
-osc.msg.time_master false
-osc.msg.phrase_master false
+osc.msg.master/time false
+osc.msg.master/phrase false
 
 osc.msg.time false
 osc.msg.phrase false
+osc.msg.n/phrase false
 
 # Send the current beat as a fraction of an interval
 # Or send a trigger message every interval
 # Comma separated floats signifiew the period (0.25=every 16th, 1=every beat). Empty to disable
-osc.msg.beat_master.subdiv 4
-osc.msg.beat_master.trigger
+osc.msg.master/beat/subdiv 4
+osc.msg.master/beat/trigger
 
 osc.msg.beat.subdiv
 osc.msg.beat.trigger

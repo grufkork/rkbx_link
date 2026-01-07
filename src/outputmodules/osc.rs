@@ -23,17 +23,11 @@ impl OutputFormat {
     }
 }
 
-struct BeatDivTrackData {
-    subdivision: f32,
-    address: String
-
-}
-
 struct MessageToggles{
-    beat_subdivs: Vec<BeatDivTrackData>,
-    beat_master_subdivs: Vec<BeatDivTrackData>,
-    beat_triggers: Vec<BeatDivTrackData>,
-    beat_master_triggers: Vec<BeatDivTrackData>,
+    beat_subdivs: Vec<f32>,
+    beat_master_subdivs: Vec<f32>,
+    beat_triggers: Vec<f32>,
+    beat_master_triggers: Vec<f32>,
 
     beat_trigger_autorelease: bool,
     time: bool,
@@ -46,25 +40,18 @@ struct MessageToggles{
 
 impl MessageToggles{
     fn new(conf: &Config, logger: ScopedLogger) -> Self{
-        let mut divs = 
-            ["msg.beat.subdiv", "msg.beat.trigger", "msg.beat_master.subdiv", "msg.beat_master.trigger"].iter().zip(
-            ["/beat/subdiv/", "/beat/trigger/", "/beat/master/subdiv/", "/beat/master/trigger/"].iter()).map(|(conf_key, addr)|{
+        let mut divs = ["msg.n/beat/subdiv", "msg.n/beat/trigger", "msg.master/beat/subdiv", "msg.master/beat/trigger"].iter().map(|conf_key|{
             conf.get_or_default(conf_key, String::new()).split(",").filter_map(|x|{
                 if x.is_empty(){
                     return None;
                 }
                 if let Ok(val) = x.trim().parse::<f32>(){
-                    Some(
-                        BeatDivTrackData{
-                            subdivision: val,
-                            address: format!("{addr}{val}"),
-                        }
-                    )
+                    Some(val)
                 }else{
                     logger.err(&format!("Error parsing value '{x}' in key {conf_key}"));
                     None
                 }
-            }).collect::<Vec<BeatDivTrackData>>()
+            }).collect()
         });
 
         MessageToggles { 
@@ -74,10 +61,10 @@ impl MessageToggles{
             beat_master_triggers: divs.next().unwrap(),
 
             beat_trigger_autorelease: conf.get_or_default("msg.trigger_autorelease", false),
-            time: conf.get_or_default("msg.time", false), 
-            time_master: conf.get_or_default("msg.time_master", true), 
-            phrase: conf.get_or_default("msg.phrase", false), 
-            phrase_master:  conf.get_or_default("msg.phrase_master", true),
+            time: conf.get_or_default("msg.n/time", false), 
+            time_master: conf.get_or_default("msg.master/time", true), 
+            phrase: conf.get_or_default("msg.n/phrase", false), 
+            phrase_master:  conf.get_or_default("msg.master/phrase", true),
             phrase_output_format: {
                 let fmt = conf.get_or_default("phrase_output_format", "string".to_string());
                 match OutputFormat::from_str(&fmt) {
@@ -182,11 +169,19 @@ impl OutputModule for Osc {
     }
 
     fn bpm_changed_master(&mut self, bpm: f32) {
-        self.send_float("/bpm/master/current", bpm);
+        self.send_float("/master/bpm/current", bpm);
+    }
+
+    fn bpm_changed(&mut self, bpm: f32, deck: usize) {
+        self.send_float(&format!("/{deck}/bpm/current"), bpm);
     }
 
     fn original_bpm_changed_master(&mut self, bpm: f32) {
-        self.send_float("/bpm/master/original", bpm);
+        self.send_float("/master/bpm/original", bpm);
+    }
+
+    fn original_bpm_changed(&mut self, bpm: f32, deck: usize) {
+        self.send_float(&format!("/{deck}/bpm/original"), bpm);
     }
 
     fn beat_update_master(&mut self, beat: f32) {
@@ -195,15 +190,15 @@ impl OutputModule for Osc {
         }
 
         for d in &self.message_toggles.beat_master_subdivs{
-            let value = (beat % d.subdivision) / d.subdivision;
-            self.send_float(&d.address, value);
+            let value = (beat % d) / d;
+            self.send_float(&format!("/master/beat/subdiv/{d}"), value);
         }
 
         for d in &self.message_toggles.beat_master_triggers{
-            if beat % d.subdivision < self.last_beat_master % d.subdivision {
-                self.send_float(&d.address, 1.);
-            }else if self.message_toggles.beat_trigger_autorelease && (beat + d.subdivision * 0.2) % d.subdivision < (self.last_beat_master + d.subdivision * 0.2) % d.subdivision{
-                self.send_float(&d.address, 0.);
+            if beat % d < self.last_beat_master % d {
+                self.send_float(&format!("/master/beat/trigger/{d}"), 1.);
+            }else if self.message_toggles.beat_trigger_autorelease && (beat + d * 0.2) % d < (self.last_beat_master + d * 0.2) % d{
+                self.send_float(&format!("/master/beat/trigger/{d}"), 0.);
             }
         }
         
@@ -216,7 +211,7 @@ impl OutputModule for Osc {
             return;
         }
         if self.message_toggles.time_master{
-            self.send_float("/time/master", time);
+            self.send_float("/master/time", time);
         }
     }
 
@@ -226,16 +221,16 @@ impl OutputModule for Osc {
         }
 
         for d in &self.message_toggles.beat_subdivs{
-            let value = (beat % d.subdivision) / d.subdivision;
-            self.send_float(&d.address, value);
+            let value = (beat % d) / d;
+            self.send_float(&format!("/{deck}/beat/subdiv/{d}"), value);
         }
 
 
         for d in &self.message_toggles.beat_triggers{
-            if beat % d.subdivision < self.last_beats[deck] % d.subdivision {
-                self.send_float(&d.address, 1.);
-            }else if self.message_toggles.beat_trigger_autorelease && (beat + d.subdivision * 0.2) % d.subdivision < (self.last_beats[deck] + d.subdivision * 0.2) % d.subdivision{
-                self.send_float(&d.address, 0.);
+            if beat % d < self.last_beats[deck] % d {
+                self.send_float(&format!("/{deck}/beat/trigger/{d}"), 1.);
+            }else if self.message_toggles.beat_trigger_autorelease && (beat + d * 0.2) % d < (self.last_beats[deck] + d * 0.2) % d{
+                self.send_float(&format!("/{deck}/beat/trigger/{d}"), 0.);
             }
         }
         self.last_beats[deck] = beat;
@@ -246,20 +241,20 @@ impl OutputModule for Osc {
             return;
         }
         if self.message_toggles.time{
-            self.send_float(&format!("/time/{deck}"), time);
+            self.send_float(&format!("/{deck}/time"), time);
         }
     }
 
     fn track_changed(&mut self, track: &TrackInfo, deck: usize) {
-        self.send_string(&format!("/track/{deck}/title"), &track.title);
-        self.send_string(&format!("/track/{deck}/artist"), &track.artist);
-        self.send_string(&format!("/track/{deck}/album"), &track.album);
+        self.send_string(&format!("/{deck}/track/title"), &track.title);
+        self.send_string(&format!("/{deck}/track/artist"), &track.artist);
+        self.send_string(&format!("/{deck}/track/album"), &track.album);
     }
 
     fn track_changed_master(&mut self, track: &TrackInfo) {
-        self.send_string("/track/master/title", &track.title);
-        self.send_string("/track/master/artist", &track.artist);
-        self.send_string("/track/master/album", &track.album);
+        self.send_string("/master/track/title", &track.title);
+        self.send_string("/master/track/artist", &track.artist);
+        self.send_string("/master/track/album", &track.album);
     }
 
     fn slow_update(&mut self) {
@@ -284,37 +279,37 @@ impl OutputModule for Osc {
 
     fn phrase_changed_master(&mut self, phrase: &str) {
         if self.message_toggles.phrase_master{
-            self.output_phrase("/phrase/master/current", phrase);
+            self.output_phrase("/master/phrase/current", phrase);
         }
     }
 
     fn next_phrase_changed_master(&mut self, phrase: &str) {
         if self.message_toggles.phrase_master{
-            self.output_phrase("/phrase/master/next", phrase);
+            self.output_phrase("/master/phrase/next", phrase);
         }
     }
 
     fn next_phrase_in_master(&mut self, beats: i32) {
         if self.message_toggles.phrase_master{
-            self.send_float("/phrase/master/countin", beats as f32);
+            self.send_float("/master/phrase/countin", beats as f32);
         }
     }
 
     fn phrase_changed(&mut self, phrase: &str, deck: usize) {
         if self.message_toggles.phrase{
-            self.output_phrase(&format!("/phrase/{deck}/current"), phrase);
+            self.output_phrase(&format!("/{deck}/phrase/current"), phrase);
         }
     }
 
     fn next_phrase_changed(&mut self, phrase: &str, deck: usize) {
         if self.message_toggles.phrase{
-            self.send_string(&format!("/phrase/{deck}/next"), phrase);
+            self.send_string(&format!("/{deck}/phrase/next"), phrase);
         }
     }
 
     fn next_phrase_in(&mut self, beats: i32, deck: usize) {
         if self.message_toggles.phrase{
-            self.send_float(&format!("/phrase/{deck}/countin"), beats as f32);
+            self.send_float(&format!("/{deck}/phrase/countin"), beats as f32);
         }
     }
 }
