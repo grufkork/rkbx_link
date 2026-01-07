@@ -23,21 +23,19 @@ impl OutputFormat {
     }
 }
 
+struct BeatDivTrackData {
+    subdivision: f32,
+    address: String
+
+}
+
 struct MessageToggles{
-    beat: bool,
-    beat_div_1: bool,
-    beat_div_2: bool,
-    beat_div_4: bool,
-    beat_div_1_trigger: bool,
-    beat_div_2_trigger: bool,
-    beat_div_4_trigger: bool,
-    beat_master: bool,
-    beat_master_div_1: bool,
-    beat_master_div_2: bool,
-    beat_master_div_4: bool,
-    beat_master_div_1_trigger: bool,
-    beat_master_div_2_trigger: bool,
-    beat_master_div_4_trigger: bool,
+    beat_subdivs: Vec<BeatDivTrackData>,
+    beat_master_subdivs: Vec<BeatDivTrackData>,
+    beat_triggers: Vec<BeatDivTrackData>,
+    beat_master_triggers: Vec<BeatDivTrackData>,
+
+    beat_trigger_autorelease: bool,
     time: bool,
     time_master: bool,
     phrase: bool,
@@ -48,21 +46,34 @@ struct MessageToggles{
 
 impl MessageToggles{
     fn new(conf: &Config, logger: ScopedLogger) -> Self{
+        let mut divs = 
+            ["msg.beat.subdiv", "msg.beat.trigger", "msg.beat_master.subdiv", "msg.beat_master.trigger"].iter().zip(
+            ["/beat/subdiv/", "/beat/trigger/", "/beat/master/subdiv/", "/beat/master/trigger/"].iter()).map(|(conf_key, addr)|{
+            conf.get_or_default(conf_key, String::new()).split(",").filter_map(|x|{
+                if x.is_empty(){
+                    return None;
+                }
+                if let Ok(val) = x.trim().parse::<f32>(){
+                    Some(
+                        BeatDivTrackData{
+                            subdivision: val,
+                            address: format!("{addr}{val}"),
+                        }
+                    )
+                }else{
+                    logger.err(&format!("Error parsing value '{x}' in key {conf_key}"));
+                    None
+                }
+            }).collect::<Vec<BeatDivTrackData>>()
+        });
+
         MessageToggles { 
-            beat: conf.get_or_default("msg.beat", false), 
-            beat_div_1: conf.get_or_default("msg.beat.div_1", false), 
-            beat_div_2: conf.get_or_default("msg.beat.div_2", false), 
-            beat_div_4: conf.get_or_default("msg.beat.div_4", false), 
-            beat_div_1_trigger: conf.get_or_default("msg.beat.div_1.trigger", false),
-            beat_div_2_trigger: conf.get_or_default("msg.beat.div_2.trigger", false),
-            beat_div_4_trigger: conf.get_or_default("msg.beat.div_4.trigger", false),
-            beat_master: conf.get_or_default("msg.beat_master", true), 
-            beat_master_div_1: conf.get_or_default("msg.beat_master.div_1", false), 
-            beat_master_div_2: conf.get_or_default("msg.beat_master.div_2", false), 
-            beat_master_div_4: conf.get_or_default("msg.beat_master.div_4", false), 
-            beat_master_div_1_trigger: conf.get_or_default("msg.beat_master.div_1.trigger", false),
-            beat_master_div_2_trigger: conf.get_or_default("msg.beat_master.div_2.trigger", false),
-            beat_master_div_4_trigger: conf.get_or_default("msg.beat_master.div_4.trigger", false),
+            beat_subdivs: divs.next().unwrap(),
+            beat_triggers: divs.next().unwrap(),
+            beat_master_subdivs: divs.next().unwrap(),
+            beat_master_triggers: divs.next().unwrap(),
+
+            beat_trigger_autorelease: conf.get_or_default("msg.trigger_autorelease", false),
             time: conf.get_or_default("msg.time", false), 
             time_master: conf.get_or_default("msg.time_master", true), 
             phrase: conf.get_or_default("msg.phrase", false), 
@@ -95,9 +106,8 @@ pub struct Osc {
 
 
 
-
 impl Osc {
-    fn send_float(&mut self, addr: &str, value: f32) {
+    fn send_float(&self, addr: &str, value: f32) {
         let msg = OscPacket::Message(OscMessage {
             addr: addr.to_string(),
             args: vec![rosc::OscType::Float(value)],
@@ -105,7 +115,7 @@ impl Osc {
         self.send(msg);
     }
 
-    fn send_string(&mut self, addr: &str, value: &str) {
+    fn send_string(&self, addr: &str, value: &str) {
         let msg = OscPacket::Message(OscMessage {
             addr: addr.to_string(),
             args: vec![rosc::OscType::String(value.to_string())],
@@ -113,7 +123,7 @@ impl Osc {
         self.send(msg);
     }
 
-    fn send_int(&mut self, addr: &str, value: i32) {
+    fn send_int(&self, addr: &str, value: i32) {
         let msg = OscPacket::Message(OscMessage {
             addr: addr.to_string(),
             args: vec![rosc::OscType::Int(value)],
@@ -121,7 +131,7 @@ impl Osc {
         self.send(msg);
     }
 
-    fn send(&mut self, msg: OscPacket) {
+    fn send(&self, msg: OscPacket) {
         let packet = match encode(&msg){
             Ok(packet) => packet,
             Err(e) => {
@@ -183,38 +193,20 @@ impl OutputModule for Osc {
         if self.send_period_counter != 0 {
             return;
         }
-        if self.message_toggles.beat_master{
-            self.send_float("/beat/master", beat);
-        }
-        if self.message_toggles.beat_master_div_1{
-            self.send_float("/beat/master/div1", beat % 1.);
-        }
-        if self.message_toggles.beat_master_div_2{
-            self.send_float("/beat/master/div2", (beat % 2.) / 2.);
-        }
-        if self.message_toggles.beat_master_div_4{
-            self.send_float("/beat/master/div4", (beat % 4.) / 4.);
-        }
-        if self.message_toggles.beat_master_div_1_trigger {
-            let div1 = beat % 1.0;
-            if div1 < (self.last_beat_master % 1.0) {
-                self.send_float("/beat/master/trigger/div1", 1.);
-            }
+
+        for d in &self.message_toggles.beat_master_subdivs{
+            let value = (beat % d.subdivision) / d.subdivision;
+            self.send_float(&d.address, value);
         }
 
-        if self.message_toggles.beat_master_div_2_trigger {
-            let div2 = beat % 2.0;
-            if div2 < (self.last_beat_master % 2.0) {
-                self.send_float("/beat/master/trigger/div2", 1.);
+        for d in &self.message_toggles.beat_master_triggers{
+            if beat % d.subdivision < self.last_beat_master % d.subdivision {
+                self.send_float(&d.address, 1.);
+            }else if self.message_toggles.beat_trigger_autorelease && (beat + d.subdivision * 0.2) % d.subdivision < (self.last_beat_master + d.subdivision * 0.2) % d.subdivision{
+                self.send_float(&d.address, 0.);
             }
         }
-
-        if self.message_toggles.beat_master_div_4_trigger {
-            let div4 = beat % 4.0;
-            if div4 < (self.last_beat_master % 4.0) {
-                self.send_float("/beat/master/trigger/div4", 1.);
-            }
-        }
+        
         self.last_beat_master = beat;
     }
 
@@ -232,34 +224,18 @@ impl OutputModule for Osc {
         if self.send_period_counter != 0 {
             return;
         }
-        if self.message_toggles.beat{
-            self.send_float(&format!("/beat/{deck}"), beat);
+
+        for d in &self.message_toggles.beat_subdivs{
+            let value = (beat % d.subdivision) / d.subdivision;
+            self.send_float(&d.address, value);
         }
-        if self.message_toggles.beat_div_1{
-            self.send_float(&format!("/beat/{deck}/div1"), beat % 1.);
-        }
-        if self.message_toggles.beat_div_2{
-            self.send_float(&format!("/beat/{deck}/div2"), beat % 2.);
-        }
-        if self.message_toggles.beat_div_4{
-            self.send_float(&format!("/beat/{deck}/div4"), beat % 4.);
-        }
-        if self.message_toggles.beat_div_1_trigger {
-            let div1 = beat % 1.0;
-            if div1 < (self.last_beats[deck] % 1.0){
-                self.send_float(&format!("/beat/{deck}/trigger/div1"), 1.);
-            }
-        }
-        if self.message_toggles.beat_div_2_trigger {
-            let div2 = beat % 2.0;
-            if div2 < (self.last_beats[deck] % 2.0) {
-                self.send_float(&format!("/beat/{deck}/trigger/div2"), 1.);
-            }
-        }
-        if self.message_toggles.beat_div_4_trigger {
-            let div4 = beat % 4.0;
-            if div4 < (self.last_beats[deck] % 4.0) {
-                self.send_float(&format!("/beat/{deck}/trigger/div4"), 1.);
+
+
+        for d in &self.message_toggles.beat_triggers{
+            if beat % d.subdivision < self.last_beats[deck] % d.subdivision {
+                self.send_float(&d.address, 1.);
+            }else if self.message_toggles.beat_trigger_autorelease && (beat + d.subdivision * 0.2) % d.subdivision < (self.last_beats[deck] + d.subdivision * 0.2) % d.subdivision{
+                self.send_float(&d.address, 0.);
             }
         }
         self.last_beats[deck] = beat;
