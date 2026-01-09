@@ -44,24 +44,29 @@ osc.destination 127.0.0.1:4460
 osc.send_every_nth 2
 # Format for phrase output [string, int, float]
 osc.phrase_output_format int
+# Also send a 0 value to simulate the release of a button for triggers
+osc.trigger_autorelease false
 
 # Enable/disable messages to save bandwidth
-# Those with "master" enable sending for the currently active deck
-# Those without enable sending of all decks
+# "master" enables messages from the current active deck
+# "n" enables sending of all decks on separate addresses
 # See readme for details
-osc.msg.beat_master true
-osc.msg.beat_master.div_1 false
-osc.msg.beat_master.div_2 false
-osc.msg.beat_master.div_4 false
-osc.msg.time_master true
-osc.msg.phrase_master true
+osc.msg.master/time false
+osc.msg.master/phrase false
 
-osc.msg.beat false
-osc.msg.beat.div_1 false
-osc.msg.beat.div_2 false
-osc.msg.beat.div_4 false
-osc.msg.time false
-osc.msg.phrase false
+osc.msg.n/time false
+osc.msg.n/phrase false
+
+# Send the current beat as a fraction of an interval
+# Or send a trigger message every interval
+# Comma separated floats signify the period (0.25=every 16th, 1=every beat). Empty to disable
+osc.msg.master/beat/subdiv 4
+osc.msg.master/beat/trigger
+
+osc.msg.beat.subdiv
+osc.msg.beat.trigger
+
+# Also send a 0 value to simulate the release of a button
 
 
 # == Write current track to file ==
