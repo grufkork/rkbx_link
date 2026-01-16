@@ -44,7 +44,7 @@ struct MessageToggles{
 
 impl MessageToggles{
     fn new(conf: &Config, logger: ScopedLogger) -> Self{
-        let mut divs = ["msg.n/beat/subdiv", "msg.n/beat/trigger", "msg.master/beat/subdiv", "msg.master/beat/trigger"].iter().map(|conf_key|{
+        let mut subdivs = ["msg.n/beat/subdiv", "msg.n/beat/trigger", "msg.master/beat/subdiv", "msg.master/beat/trigger"].iter().map(|conf_key|{
             conf.get_or_default(conf_key, String::new()).split(",").filter_map(|x|{
                 if x.is_empty(){
                     return None;
@@ -63,10 +63,10 @@ impl MessageToggles{
             beat_master: conf.get_or_default("msg.master/beat", false),*/
 
 
-            beat_subdivs: divs.next().unwrap(),
-            beat_triggers: divs.next().unwrap(),
-            beat_master_subdivs: divs.next().unwrap(),
-            beat_master_triggers: divs.next().unwrap(),
+            beat_subdivs: subdivs.next().unwrap(),
+            beat_triggers: subdivs.next().unwrap(),
+            beat_master_subdivs: subdivs.next().unwrap(),
+            beat_master_triggers: subdivs.next().unwrap(),
 
             beat_trigger_autorelease: conf.get_or_default("trigger_autorelease", false),
             time: conf.get_or_default("msg.n/time", false), 
