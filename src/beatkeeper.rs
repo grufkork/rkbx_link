@@ -5,6 +5,7 @@ use crate::outputmodules::ModuleDefinition;
 use crate::outputmodules::OutputModule;
 use crate::utils::PhraseParser;
 use crate::RekordboxOffsets;
+use crate::macos_memory::{self, MemoryError, Process, ProcessHandle};
 use binrw::BinRead;
 use notify::Watcher;
 use rekordcrate::anlz::{self, BeatGrid};
@@ -21,19 +22,24 @@ struct ReadError {
     pointer: Option<Pointer>,
     address: usize,
     error: TAExternalError,
+    error: MemoryError,
 }
 struct Value<T> {
     address: usize,
     handle: *mut c_void,
+    handle: ProcessHandle,
     _marker: PhantomData<T>,
 }
 
 impl<T> Value<T> {
     fn new(h: *mut c_void, base: usize, offsets: &Pointer) -> Result<Value<T>, ReadError> {
+impl<T: Copy> Value<T> {
+    fn new(h: &ProcessHandle, base: usize, offsets: &Pointer) -> Result<Value<T>, ReadError> {
         let mut address = base;
 
         for offset in &offsets.offsets {
             address = match read::<usize>(h, address + offset) {
+            address = match macos_memory::read::<usize>(h, address + offset) {
                 Ok(val) => val,
                 Err(e) => {
                     return Err(ReadError {
@@ -49,11 +55,13 @@ impl<T> Value<T> {
         Ok(Value::<T> {
             address,
             handle: h,
+            handle: h.clone(),
             _marker: PhantomData::<T>,
         })
     }
     fn pointers_to_vals(
         h: *mut c_void,
+        h: &ProcessHandle,
         base: usize,
         pointers: &[Pointer],
     ) -> Result<Vec<Value<T>>, ReadError> {
@@ -62,6 +70,7 @@ impl<T> Value<T> {
 
     fn read(&self) -> Result<T, ReadError> {
         match read::<T>(self.handle, self.address) {
+        match macos_memory::read::<T>(&self.handle, self.address) {
             Ok(val) => Ok(val),
             Err(e) => Err(ReadError {
                 pointer: None,
@@ -74,6 +83,7 @@ impl<T> Value<T> {
 
 struct PointerChainValue<T> {
     handle: *mut c_void,
+    handle: ProcessHandle,
     base: usize,
     pointer: Pointer,
     _marker: PhantomData<T>,
@@ -81,8 +91,11 @@ struct PointerChainValue<T> {
 
 impl<T> PointerChainValue<T> {
     fn new(h: *mut c_void, base: usize, pointer: Pointer) -> PointerChainValue<T> {
+impl<T: Copy> PointerChainValue<T> {
+    fn new(h: &ProcessHandle, base: usize, pointer: Pointer) -> PointerChainValue<T> {
         Self {
             handle: h,
+            handle: h.clone(),
             base,
             pointer,
             _marker: PhantomData::<T>,
@@ -91,6 +104,7 @@ impl<T> PointerChainValue<T> {
 
     fn pointers_to_vals(
         h: *mut c_void,
+        h: &ProcessHandle,
         base: usize,
         pointers: &[Pointer],
     ) -> Vec<PointerChainValue<T>> {
@@ -102,6 +116,7 @@ impl<T> PointerChainValue<T> {
 
     fn read(&self) -> Result<T, ReadError> {
         Value::<T>::new(self.handle, self.base, &self.pointer)?.read()
+        Value::<T>::new(&self.handle, self.base, &self.pointer)?.read()
     }
 }
 
@@ -118,6 +133,7 @@ pub struct Rekordbox {
 impl Rekordbox {
     fn new(offsets: RekordboxOffsets, decks: usize) -> Result<Self, ReadError> {
         let rb = match Process::from_process_name("rekordbox.exe") {
+        let rb = match Process::from_process_name("rekordbox") {
             Ok(p) => p,
             Err(e) => {
                 return Err(ReadError {
@@ -128,8 +144,10 @@ impl Rekordbox {
             }
         };
         let h = rb.process_handle;
+        let h = &rb.process_handle;
 
         let base = match rb.get_module_base("rekordbox.exe") {
+        let base = match rb.get_module_base("rekordbox") {
             Ok(b) => b,
             Err(e) => {
                 return Err(ReadError {
@@ -141,15 +159,20 @@ impl Rekordbox {
         };
 
         let current_bpms = Value::pointers_to_vals(h, base, &offsets.current_bpm[0..decks])?;
+        let current_bpms = Value::pointers_to_vals(&h, base, &offsets.current_bpm[0..decks])?;
         let sample_positions =
             Value::pointers_to_vals(h, base, &offsets.sample_position[0..decks])?;
+            Value::pointers_to_vals(&h, base, &offsets.sample_position[0..decks])?;
         let track_infos =
             PointerChainValue::pointers_to_vals(h, base, &offsets.track_info[0..decks]);
         let anlz_paths = PointerChainValue::pointers_to_vals(h, base, &offsets.anlz_path[0..decks]);
+            PointerChainValue::pointers_to_vals(&h, base, &offsets.track_info[0..decks]);
+        let anlz_paths = PointerChainValue::pointers_to_vals(&h, base, &offsets.anlz_path[0..decks]);
 
         let deckcount = current_bpms.len();
 
         let masterdeck_index_val: Value<u8> = Value::new(h, base, &offsets.masterdeck_index)?;
+        let masterdeck_index_val: Value<u8> = Value::new(&h, base, &offsets.masterdeck_index)?;
 
         Ok(Self {
             current_bpms,
@@ -354,6 +377,7 @@ impl BeatKeeper {
             anlz_paths: vec![ChangeTrackedValue::new("".to_string()); 4],
             watcher,
             watcher_rx
+            watcher_rx,
         };
 
         let mut rekordbox = None;
@@ -407,6 +431,7 @@ impl BeatKeeper {
         }
         match &e.error {
             TAExternalError::ProcessNotFound | TAExternalError::ModuleNotFound => {
+            MemoryError::ProcessNotFound => {
                 self.logger.err("Rekordbox process not found!");
             }
             TAExternalError::SnapshotFailed(e) => {
@@ -415,6 +440,13 @@ impl BeatKeeper {
             }
             TAExternalError::ReadMemoryFailed(e) => {
                 self.logger.err(&format!("Read memory failed: {e}"));
+            MemoryError::TaskAccessDenied => {
+                self.logger.err("Task access denied!");
+                self.logger.info("    On macOS, you may need to run with sudo or grant permissions:");
+                self.logger.info("    sudo ./rkbx_link");
+            }
+            MemoryError::ReadFailed(msg) => {
+                self.logger.err(&format!("Read memory failed: {msg}"));
                 self.logger.info("    Try the following:");
                 self.logger
                     .info("    - Wait for Rekordbox to start and load a track");
@@ -424,6 +456,7 @@ impl BeatKeeper {
                 self.logger
                     .info("    - Check the number of decks in the config");
                 self.logger.info("    - Update the offsets and program");
+                self.logger.info("    - NOTE: Memory offsets from Windows may not work on macOS");
                 self.logger.info("    If nothing works, wait for an update, or enable Debug in config and submit this entire error message on an Issue on GitHub.");
             }
             TAExternalError::WriteMemoryFailed(e) => {
@@ -601,6 +634,12 @@ impl BeatKeeper {
                         self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
                             self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
                         });
+                        // Only unwatch if there was a previous path (not empty)
+                        if !self.anlz_paths[i].value.is_empty() {
+                            let _ = self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value));
+                            let _ = self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")));
+                        }
+
                         self.anlz_paths[i].set(path);
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
                             self.logger.err(&format!("Deck {i}: Failed to watch path for{}: {}", &self.anlz_paths[i].value, e));
@@ -608,6 +647,16 @@ impl BeatKeeper {
                         self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
                             self.logger.err(&format!("Deck {i}: Failed to watch path Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
                         });
+
+                        // Only watch if the new path is not empty
+                        if !self.anlz_paths[i].value.is_empty() {
+                            if let Err(e) = self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive) {
+                                self.logger.err(&format!("Deck {i}: Failed to watch path {}: {}", &self.anlz_paths[i].value, e));
+                            }
+                            if let Err(e) = self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive) {
+                                self.logger.err(&format!("Deck {i}: Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
+                            }
+                        }
                     }
 
                     // TODO watch out here, there's probably loads of things that can go wrong
