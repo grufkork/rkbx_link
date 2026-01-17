@@ -31,7 +31,7 @@ impl WindowsMem{
             }
         };
 
-        return Ok(WindowsMem{
+        Ok(WindowsMem{
             process_handle,
             base
         })

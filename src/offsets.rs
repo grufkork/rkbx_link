@@ -1,4 +1,3 @@
-use core::fmt;
 use std::{collections::HashMap, fs::File, io::Read};
 use crate::memory::Pointer;
 

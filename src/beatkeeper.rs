@@ -3,7 +3,6 @@ use crate::log::ScopedLogger;
 use crate::memory::MemBackend;
 use crate::memory::MemReader;
 use crate::memory::MemoryReadErrorType;
-use crate::memory::Pointer;
 use crate::memory::MemoryReadError;
 use crate::outputmodules::ModuleDefinition;
 use crate::outputmodules::OutputModule;
@@ -16,7 +15,7 @@ use rekordcrate::anlz::{self, BeatGrid};
 use std::io::Cursor;
 use std::sync::mpsc;
 use std::thread;
-use std::{marker::PhantomData, time::Duration};
+use std::time::Duration;
 
 use crate::memory::Value;
 
@@ -619,7 +618,7 @@ impl BeatKeeper {
             }
             MemoryReadErrorType::ModuleNotFound => {
                 self.logger.err(&format!("Module not found: {detail}"));
-                self.logger.err(&format!("This new exciting error has never been seen before! Please report this on GitHub!"));
+                self.logger.err("This new exciting error has never been seen before! Please report this on GitHub!");
             }
         };
         if let Some(p) = &e.pointer {

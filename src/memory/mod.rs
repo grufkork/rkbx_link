@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 use core::fmt;
-use winapi::ctypes::c_void;
 
 use crate::log::ScopedLogger;
 
@@ -36,7 +35,7 @@ impl MemReader{
     }
 
     pub fn new_value<T>(&self, offsets: &Pointer) -> Result<Value<T>, MemoryReadError>{
-        Value::new(&self, offsets)
+        Value::new(self, offsets)
     } 
     pub fn new_values<T>(&self, pointers: &[Pointer]) -> Result<Vec<Value<T>>, MemoryReadError> {
         pointers.iter().map(|x| self.new_value(x)).collect()
