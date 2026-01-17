@@ -95,7 +95,7 @@ pub struct Osc {
     send_period: i32,
     send_period_counter: i32,
     last_beat_master: f32,
-    last_beats: Vec<f32>
+    last_beats: Vec<f32>,
     last_error_logged: std::time::Instant,
 }
 
@@ -137,11 +137,13 @@ impl Osc {
         };
         if let Err(e) = self.socket.send(&packet) {
             self.logger.err(&format!("Failed to send OSC message: {e}"));
+            // QUESTION: Does this happen? I have never had this fail
+            //
             // Only log errors once every 5 seconds to avoid spam
-            if self.last_error_logged.elapsed() >= std::time::Duration::from_secs(5) {
-                self.logger.err(&format!("Failed to send OSC message: {e}"));
-                self.last_error_logged = std::time::Instant::now();
-            }
+            // if self.last_error_logged.elapsed() >= std::time::Duration::from_secs(5) {
+            //     self.logger.err(&format!("Failed to send OSC message: {e}"));
+            //     self.last_error_logged = std::time::Instant::now();
+            // }
         };
     }
 }
@@ -162,6 +164,7 @@ impl Osc {
         {
             logger.err(&format!("Failed to open connection to receiver: {e}"));
             return Err(());
+        }
         // Try to connect to destination, but don't fail if receiver isn't ready yet
         // UDP doesn't require an established connection to send
         let destination = conf.get_or_default("destination", "127.0.0.1:9999".to_string());

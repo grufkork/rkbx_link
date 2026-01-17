@@ -1,5 +1,6 @@
 use core::fmt;
 use std::{collections::HashMap, fs::File, io::Read};
+use crate::memory::Pointer;
 
 use crate::log::ScopedLogger;
 
@@ -101,43 +102,6 @@ pub struct RekordboxOffsets {
     pub anlz_path: Vec<Pointer>,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct Pointer {
-    pub offsets: Vec<usize>,
-    pub final_offset: usize,
-}
 
-impl Pointer {
-    pub fn new(offests: Vec<usize>, final_offset: usize) -> Pointer {
-        Pointer {
-            offsets: offests,
-            final_offset,
-        }
-    }
 
-    pub fn from_string(input: &str, logger: &ScopedLogger) -> Result<Self, String> {
-        logger.debug(&format!("Parsing pointer: {input}"));
-        let split = input
-            .split(' ')
-            .map(hexparse)
-            .collect::<Result<Vec<usize>, String>>()?;
-        let last = *split.last().ok_or("Last offset is missing")?;
-        Ok(Self::new(split[0..split.len() - 1].to_vec(), last))
-    }
-}
 
-impl fmt::Display for Pointer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut res = "[".to_string();
-        for offset in &self.offsets {
-            res += &format!("{offset:X}, ");
-        }
-        res += &format!("{:X}]", self.final_offset);
-
-        write!(f, "{res}")
-    }
-}
-
-fn hexparse(input: &str) -> Result<usize, String> {
-    usize::from_str_radix(input, 16).map_err(|_| format!("Failed to parse hex value: {input}"))
-}

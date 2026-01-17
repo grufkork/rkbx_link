@@ -3,6 +3,8 @@
 use sysinfo::{ProcessesToUpdate, System};
 use std::mem;
 
+use crate::memory::{MemBackend, MemoryReadError, MemoryReadErrorType};
+
 // Mach kernel types
 type MachPort = u32;
 type KernReturn = i32;
@@ -47,12 +49,16 @@ impl std::fmt::Display for MemoryError {
     }
 }
 
-pub struct Process {
+pub struct MacMemory {
     pub process_handle: ProcessHandle,
     pub base_address: usize,
 }
 
-impl Process {
+impl MacMemory {
+    pub fn new() -> Result<MacMemory, String>{
+        Ok(MacMemory::from_process_name("rekordbox").unwrap()) // FIX
+    }
+
     /// Find a process by name and get its handle
     /// Process name should be something like "rekordbox" or "Rekordbox"
     pub fn from_process_name(name: &str) -> Result<Self, MemoryError> {
@@ -105,11 +111,11 @@ impl Process {
         // For macOS, we need to discover the actual base address dynamically
         // since ASLR changes it every restart. We'll use a heuristic: find the
         // first executable region that looks like the main module
-        let base_address = discover_base_address(pid)?;
+        let base_address = MacMemory::discover_base_address(pid)?;
 
         eprintln!("Discovered base address: 0x{:X}", base_address);
 
-        Ok(Process {
+        Ok(MacMemory {
             process_handle,
             base_address,
         })
@@ -119,55 +125,70 @@ impl Process {
     pub fn get_module_base(&self, _module_name: &str) -> Result<usize, MemoryError> {
         Ok(self.base_address)
     }
-}
 
-/// Discover the base address of a process by running vmmap
-fn discover_base_address(pid: Pid) -> Result<usize, MemoryError> {
-    use std::process::Command;
+    /// Discover the base address of a process by running vmmap
+    fn discover_base_address(pid: Pid) -> Result<usize, MemoryError> {
+        use std::process::Command;
 
-    let output = Command::new("vmmap")
-        .arg(pid.to_string())
-        .output()
-        .map_err(|_| MemoryError::ProcessNotFound)?;
+        let output = Command::new("vmmap")
+            .arg(pid.to_string())
+            .output()
+            .map_err(|_| MemoryError::ProcessNotFound)?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Look for "Load Address:    0xXXXXXXXXXX"
-    for line in stdout.lines() {
-        if line.contains("Load Address:") {
-            if let Some(addr_str) = line.split_whitespace().last() {
-                if let Ok(addr) = usize::from_str_radix(addr_str.trim_start_matches("0x"), 16) {
-                    return Ok(addr);
+        // Look for "Load Address:    0xXXXXXXXXXX"
+        for line in stdout.lines() {
+            if line.contains("Load Address:") {
+                if let Some(addr_str) = line.split_whitespace().last() {
+                    if let Ok(addr) = usize::from_str_radix(addr_str.trim_start_matches("0x"), 16) {
+                        return Ok(addr);
+                    }
                 }
             }
         }
+
+        Err(MemoryError::ProcessNotFound)
     }
 
-    Err(MemoryError::ProcessNotFound)
+    fn convert_error(&mut self, e: MemoryError) {
+    }
 }
 
-/// Read a value of type T from the process at the given address using mach_vm_read_overwrite
-pub fn read<T: Copy>(handle: &ProcessHandle, address: usize) -> Result<T, MemoryError> {
-    let mut value: T = unsafe { mem::zeroed() };
-    let size = mem::size_of::<T>();
-    let mut read_size: MachVmSize = size as MachVmSize;
 
-    let result = unsafe {
-        mach_vm_read_overwrite(
-            handle.task,
-            address as MachVmAddress,
-            size as MachVmSize,
-            &mut value as *mut T as MachVmAddress,
-            &mut read_size,
-        )
-    };
 
-    if result != 0 {
-        return Err(MemoryError::ReadFailed(format!(
-            "address: 0x{:X}, mach error: {}",
-            address, result
-        )));
+impl MemBackend for MacMemory{
+    /// Read a value of type T from the process at the given address using mach_vm_read_overwrite
+    fn read<T>(&self, address: usize) -> Result<T, MemoryReadError> {
+        let mut value: T = unsafe { mem::zeroed() };
+        let size = mem::size_of::<T>();
+        let mut read_size: MachVmSize = size as MachVmSize;
+
+        let result = unsafe {
+            mach_vm_read_overwrite(
+                self.process_handle.task,
+                address as MachVmAddress,
+                size as MachVmSize,
+                &mut value as *mut T as MachVmAddress,
+                &mut read_size,
+            )
+        };
+
+        if result != 0 {
+            return Err(MemoryReadError { pointer: None, address, detail: Some(format!("mach error: {result}")), error_type: MemoryReadErrorType::ReadMemoryFailed })
+            
+            // return Err(MemoryError::ReadFailed(format!(
+            //             "address: 0x{:X}, mach error: {}",
+            //             address, result
+            // )));
+        }
+
+        Ok(value)
     }
 
-    Ok(value)
+    
+    fn get_base_offset(&self) -> usize {
+        self.base_address
+    }
 }
+
