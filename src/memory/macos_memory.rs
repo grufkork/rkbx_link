@@ -55,7 +55,7 @@ pub struct MacMemory {
 }
 
 impl MacMemory {
-    pub fn new() -> Result<MacMemory, String>{
+    pub fn new() -> Result<MacMemory, MemoryReadError>{
         Ok(MacMemory::from_process_name("rekordbox").unwrap()) // FIX
     }
 

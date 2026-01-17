@@ -30,7 +30,7 @@ const REPO: &str = "grufkork/rkbx_link/refs/heads/master";
 #[cfg(target_os = "windows")]
 const OFFSETS_PATH: &str = "./data/offsets";
 #[cfg(target_os = "macos")]
-const OFFSET_PATH: &str = "./data/offsets-macos";
+const OFFSETS_PATH: &str = "./data/offsets-macos";
 
 fn main() {
     println!();
