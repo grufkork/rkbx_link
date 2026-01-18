@@ -316,7 +316,7 @@ impl OutputModule for Osc {
 
     fn next_phrase_changed(&mut self, phrase: &str, deck: usize) {
         if self.message_toggles.phrase{
-            self.send_string(&format!("/{deck}/phrase/next"), phrase);
+            self.output_phrase(&format!("/{deck}/phrase/next"), phrase);
         }
     }
 
