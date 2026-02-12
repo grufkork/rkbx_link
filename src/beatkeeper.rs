@@ -1,6 +1,5 @@
 use crate::config::Config;
 use crate::log::ScopedLogger;
-use crate::memory::MemBackend;
 use crate::memory::MemReader;
 use crate::memory::MemoryReadErrorType;
 use crate::memory::MemoryReadError;

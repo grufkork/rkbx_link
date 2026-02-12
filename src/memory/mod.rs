@@ -30,10 +30,6 @@ impl MemReader{
         Ok(MemReader { base: backend.get_base_offset(), backend })
     }
 
-    fn get_base_offset(&self) -> usize{
-        self.backend.get_base_offset()
-    }
-
     pub fn new_value<T>(&self, offsets: &Pointer) -> Result<Value<T>, MemoryReadError>{
         Value::new(self, offsets)
     } 
@@ -95,15 +91,13 @@ impl<T> Value<T> {
 
 
 pub struct PointerChainValue<T> {
-    base: usize,
     pointer: Pointer,
     _marker: PhantomData<T>,
 }
 
 impl<T> PointerChainValue<T> {
-    fn new(mem: &MemReader, pointer: Pointer) -> PointerChainValue<T> {
+    fn new(_mem: &MemReader, pointer: Pointer) -> PointerChainValue<T> {
         Self {
-            base: mem.base,
             pointer,
             _marker: PhantomData::<T>,
         }
@@ -117,6 +111,7 @@ impl<T> PointerChainValue<T> {
 }
 
 #[derive(PartialEq, Clone)]
+#[allow(dead_code)]
 pub enum MemoryReadErrorType{
     ProcessNotFound,
     SnapshotFailed,

@@ -36,7 +36,6 @@ pub struct ProcessHandle {
 pub enum MemoryError {
     ProcessNotFound,
     TaskAccessDenied,
-    ReadFailed(String),
 }
 
 impl std::fmt::Display for MemoryError {
@@ -44,7 +43,6 @@ impl std::fmt::Display for MemoryError {
         match self {
             MemoryError::ProcessNotFound => write!(f, "Process not found"),
             MemoryError::TaskAccessDenied => write!(f, "Task access denied (need sudo or entitlements)"),
-            MemoryError::ReadFailed(msg) => write!(f, "Memory read failed: {}", msg),
         }
     }
 }
@@ -121,11 +119,6 @@ impl MacMemory {
         })
     }
 
-    /// Get module base address (for compatibility, just returns the process base)
-    pub fn get_module_base(&self, _module_name: &str) -> Result<usize, MemoryError> {
-        Ok(self.base_address)
-    }
-
     /// Discover the base address of a process by running vmmap
     fn discover_base_address(pid: Pid) -> Result<usize, MemoryError> {
         use std::process::Command;
@@ -151,8 +144,6 @@ impl MacMemory {
         Err(MemoryError::ProcessNotFound)
     }
 
-    fn convert_error(&mut self, e: MemoryError) {
-    }
 }
 
 
