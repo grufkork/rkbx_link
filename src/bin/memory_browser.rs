@@ -5,15 +5,19 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use std::io::{self, Write};
 
-#[path = "../macos_memory.rs"]
-mod macos_memory;
-#[path = "../offsets.rs"]
-mod offsets;
+#[allow(dead_code)]
 #[path = "../log.rs"]
 mod log;
+#[allow(dead_code)]
+#[path = "../memory/mod.rs"]
+mod memory;
+#[allow(dead_code)]
+#[path = "../offsets.rs"]
+mod offsets;
 
-use macos_memory::{Process, read};
-use offsets::{Pointer, RekordboxOffsets};
+use memory::{MemBackend, Pointer};
+use memory::macos_memory::MacMemory;
+use offsets::RekordboxOffsets;
 use log::{Logger, ScopedLogger};
 
 #[derive(Clone)]
@@ -27,7 +31,7 @@ struct MemorySnapshot {
 fn main() {
     println!("=== Memory Structure Browser ===\n");
 
-    let rb = match Process::from_process_name("rekordbox") {
+    let rb = match MacMemory::from_process_name("rekordbox") {
         Ok(p) => {
             println!("✓ Found Rekordbox (base: 0x{:X})", p.base_address);
             p
@@ -150,21 +154,21 @@ fn main() {
     }
 }
 
-fn take_snapshot(rb: &Process, base_addr: usize) -> HashMap<i64, MemorySnapshot> {
+fn take_snapshot(rb: &MacMemory, base_addr: usize) -> HashMap<i64, MemorySnapshot> {
     let mut snapshot = HashMap::new();
 
     // Scan ±1024 bytes around the base address
     for offset in (-1024..1024).step_by(8) {
         let scan_addr = (base_addr as i64 + offset) as usize;
 
-        if let Ok(val_u64) = read::<u64>(&rb.process_handle, scan_addr) {
-            let val_f32 = read::<f32>(&rb.process_handle, scan_addr).unwrap_or(0.0);
-            let val_i64 = read::<i64>(&rb.process_handle, scan_addr).unwrap_or(0);
+        if let Ok(val_u64) = rb.read::<u64>(scan_addr) {
+            let val_f32 = rb.read::<f32>(scan_addr).unwrap_or(0.0);
+            let val_i64 = rb.read::<i64>(scan_addr).unwrap_or(0);
 
             // Try to read as string
             let mut str_bytes = Vec::new();
             for i in 0..16 {
-                if let Ok(byte) = read::<u8>(&rb.process_handle, scan_addr + i) {
+                if let Ok(byte) = rb.read::<u8>(scan_addr + i) {
                     if byte == 0 { break; }
                     if byte >= 32 && byte < 127 {
                         str_bytes.push(byte);
@@ -191,15 +195,12 @@ fn take_snapshot(rb: &Process, base_addr: usize) -> HashMap<i64, MemorySnapshot>
     snapshot
 }
 
-fn follow_pointer_chain(rb: &Process, pointer: &Pointer) -> Option<usize> {
-    let base = rb.get_module_base("rekordbox").ok()?;
-    let handle = &rb.process_handle;
-
-    let mut address = base;
+fn follow_pointer_chain(rb: &MacMemory, pointer: &Pointer) -> Option<usize> {
+    let mut address = rb.base_address;
 
     for offset in pointer.offsets.iter() {
         address = address + offset;
-        address = read::<usize>(handle, address).ok()?;
+        address = rb.read::<usize>(address).ok()?;
     }
 
     address = address + pointer.final_offset;
