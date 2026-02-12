@@ -3,16 +3,19 @@ use std::time::Duration;
 use std::rc::Rc;
 use std::io::Write;
 
-// Copy the necessary modules from main
-#[path = "../macos_memory.rs"]
-mod macos_memory;
-#[path = "../offsets.rs"]
-mod offsets;
+#[allow(dead_code)]
 #[path = "../log.rs"]
 mod log;
+#[allow(dead_code)]
+#[path = "../memory/mod.rs"]
+mod memory;
+#[allow(dead_code)]
+#[path = "../offsets.rs"]
+mod offsets;
 
-use macos_memory::{Process, read};
-use offsets::{Pointer, RekordboxOffsets};
+use memory::{MemBackend, MemoryReadError, Pointer};
+use memory::macos_memory::MacMemory;
+use offsets::RekordboxOffsets;
 use log::{Logger, ScopedLogger};
 
 fn main() {
@@ -20,7 +23,7 @@ fn main() {
 
     // Find Rekordbox process
     println!("Looking for Rekordbox...");
-    let rb = match Process::from_process_name("rekordbox") {
+    let rb = match MacMemory::from_process_name("rekordbox") {
         Ok(p) => {
             println!("✓ Found Rekordbox!");
             p
@@ -166,45 +169,21 @@ fn main() {
     }
 }
 
-fn read_value<T: Copy>(rb: &Process, pointer: &Pointer) -> Result<T, macos_memory::MemoryError> {
-    let base = rb.get_module_base("rekordbox")?;
-    let handle = &rb.process_handle;
-
-    // Follow pointer chain
-    let mut address = base;
+fn read_value<T: Copy>(rb: &MacMemory, pointer: &Pointer) -> Result<T, MemoryReadError> {
+    let mut address = rb.base_address;
 
     for offset in pointer.offsets.iter() {
         address = address + offset;
-        address = read::<usize>(handle, address)?;
+        address = rb.read::<usize>(address)?;
     }
 
-    // Add final offset and read value
     address = address + pointer.final_offset;
-    let value = read::<T>(handle, address)?;
+    let value = rb.read::<T>(address)?;
 
     Ok(value)
 }
 
-fn read_value_with_addr<T: Copy>(rb: &Process, pointer: &Pointer) -> Result<(T, usize), macos_memory::MemoryError> {
-    let base = rb.get_module_base("rekordbox")?;
-    let handle = &rb.process_handle;
-
-    // Follow pointer chain
-    let mut address = base;
-
-    for offset in pointer.offsets.iter() {
-        address = address + offset;
-        address = read::<usize>(handle, address)?;
-    }
-
-    // Add final offset and read value
-    address = address + pointer.final_offset;
-    let value = read::<T>(handle, address)?;
-
-    Ok((value, address))
-}
-
-fn read_track_info(rb: &Process, pointer: &Pointer) -> (String, String, String) {
+fn read_track_info(rb: &MacMemory, pointer: &Pointer) -> (String, String, String) {
     // Read 200 bytes for track info string
     let bytes = match read_value::<[u8; 200]>(rb, pointer) {
         Ok(b) => b,
@@ -230,7 +209,7 @@ fn read_track_info(rb: &Process, pointer: &Pointer) -> (String, String, String) 
     (title, artist, album)
 }
 
-fn read_string(rb: &Process, pointer: &Pointer) -> String {
+fn read_string(rb: &MacMemory, pointer: &Pointer) -> String {
     // Read up to 512 bytes for path string
     let bytes = match read_value::<[u8; 512]>(rb, pointer) {
         Ok(b) => b,
