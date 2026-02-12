@@ -3,13 +3,13 @@ use core::fmt;
 
 use crate::log::ScopedLogger;
 
-
-
-pub mod macos_memory;
+#[cfg(target_os = "windows")]
 pub mod windows_memory;
-
 #[cfg(target_os = "windows")]
 pub type ActiveBackend = windows_memory::WindowsMem;
+
+#[cfg(target_os = "macos")]
+pub mod macos_memory;
 #[cfg(target_os = "macos")]
 pub type ActiveBackend = macos_memory::MacMemory;
 

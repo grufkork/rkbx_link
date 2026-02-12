@@ -483,12 +483,6 @@ impl BeatKeeper {
                     if self.anlz_paths[i].value != path {
                         self.logger.debug(&format!("Deck {i} ANLZ file path changed: {path}"));
 
-                        self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
-                        });
-                        self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
-                        });
                         // Only unwatch if there was a previous path (not empty)
                         if !self.anlz_paths[i].value.is_empty() {
                             let _ = self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value));
@@ -496,12 +490,6 @@ impl BeatKeeper {
                         }
 
                         self.anlz_paths[i].set(path);
-                        self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path for{}: {}", &self.anlz_paths[i].value, e));
-                        });
-                        self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
-                        });
 
                         // Only watch if the new path is not empty
                         if !self.anlz_paths[i].value.is_empty() {
