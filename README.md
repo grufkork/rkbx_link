@@ -1,8 +1,5 @@
 [More info/Buy](https://3gg.se/products/rkbx_link) | [Buy a License](https://store.3gg.se/)
 
-# TEMPORARY PLANNED OUTAGE March 1-2
-I'm moving and the server will be intermittently down. Exisiting installations will continue without as usual and without interruption, send me an email if you need access to the offsets!
-
 # rkbx_link for Rekordbox 
 Export live and rock-solid timing, phrase and track info to sync live lights and music to your DJ sets in Rekordbox! With support for Ableton Link, OSC, sACN, setlist generation and more. rkbx_link provides highly accurate low-latency data by reading transport position and beatgrid directly from memory. Essentially it's Pro DJ Link, but for Rekordbox!
 
