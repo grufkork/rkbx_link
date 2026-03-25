@@ -1,109 +1,29 @@
 use crate::config::Config;
 use crate::log::ScopedLogger;
-use crate::offsets::Pointer;
+use crate::memory::MemReader;
+use crate::memory::MemoryReadErrorType;
+use crate::memory::MemoryReadError;
 use crate::outputmodules::ModuleDefinition;
 use crate::outputmodules::OutputModule;
 use crate::utils::PhraseParser;
 use crate::RekordboxOffsets;
+use crate::memory::PointerChainValue;
 use binrw::BinRead;
 use notify::Watcher;
 use rekordcrate::anlz::{self, BeatGrid};
 use std::io::Cursor;
 use std::sync::mpsc;
 use std::thread;
-use std::{marker::PhantomData, time::Duration};
-use toy_arms::external::error::TAExternalError;
-use toy_arms::external::{read, Process};
-use winapi::ctypes::c_void;
+use std::time::Duration;
 
-#[derive(PartialEq, Clone)]
-struct ReadError {
-    pointer: Option<Pointer>,
-    address: usize,
-    error: TAExternalError,
-}
-struct Value<T> {
-    address: usize,
-    handle: *mut c_void,
-    _marker: PhantomData<T>,
-}
+use crate::memory::Value;
 
-impl<T> Value<T> {
-    fn new(h: *mut c_void, base: usize, offsets: &Pointer) -> Result<Value<T>, ReadError> {
-        let mut address = base;
 
-        for offset in &offsets.offsets {
-            address = match read::<usize>(h, address + offset) {
-                Ok(val) => val,
-                Err(e) => {
-                    return Err(ReadError {
-                        pointer: Some(offsets.clone()),
-                        address: address + offset,
-                        error: e,
-                    })
-                }
-            }
-        }
-        address += offsets.final_offset;
 
-        Ok(Value::<T> {
-            address,
-            handle: h,
-            _marker: PhantomData::<T>,
-        })
-    }
-    fn pointers_to_vals(
-        h: *mut c_void,
-        base: usize,
-        pointers: &[Pointer],
-    ) -> Result<Vec<Value<T>>, ReadError> {
-        pointers.iter().map(|x| Value::new(h, base, x)).collect()
-    }
 
-    fn read(&self) -> Result<T, ReadError> {
-        match read::<T>(self.handle, self.address) {
-            Ok(val) => Ok(val),
-            Err(e) => Err(ReadError {
-                pointer: None,
-                address: self.address,
-                error: e,
-            }),
-        }
-    }
-}
 
-struct PointerChainValue<T> {
-    handle: *mut c_void,
-    base: usize,
-    pointer: Pointer,
-    _marker: PhantomData<T>,
-}
 
-impl<T> PointerChainValue<T> {
-    fn new(h: *mut c_void, base: usize, pointer: Pointer) -> PointerChainValue<T> {
-        Self {
-            handle: h,
-            base,
-            pointer,
-            _marker: PhantomData::<T>,
-        }
-    }
 
-    fn pointers_to_vals(
-        h: *mut c_void,
-        base: usize,
-        pointers: &[Pointer],
-    ) -> Vec<PointerChainValue<T>> {
-        pointers
-            .iter()
-            .map(|x| PointerChainValue::new(h, base, x.clone()))
-            .collect()
-    }
-
-    fn read(&self) -> Result<T, ReadError> {
-        Value::<T>::new(self.handle, self.base, &self.pointer)?.read()
-    }
-}
 
 pub struct Rekordbox {
     masterdeck_index: Value<u8>,
@@ -112,44 +32,22 @@ pub struct Rekordbox {
     track_infos: Vec<PointerChainValue<[u8; 200]>>,
     anlz_paths: Vec<PointerChainValue<[u8; 500]>>,
     deckcount: usize,
-    phraseparser: PhraseParser
+    phraseparser: PhraseParser,
+    mem: MemReader
 }
 
 impl Rekordbox {
-    fn new(offsets: RekordboxOffsets, decks: usize) -> Result<Self, ReadError> {
-        let rb = match Process::from_process_name("rekordbox.exe") {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(ReadError {
-                    pointer: None,
-                    address: 0,
-                    error: e,
-                })
-            }
-        };
-        let h = rb.process_handle;
+    fn new(offsets: RekordboxOffsets, decks: usize) -> Result<Self, MemoryReadError> {
+        let mem = crate::memory::MemReader::new()?;
 
-        let base = match rb.get_module_base("rekordbox.exe") {
-            Ok(b) => b,
-            Err(e) => {
-                return Err(ReadError {
-                    pointer: None,
-                    address: 0,
-                    error: e,
-                })
-            }
-        };
-
-        let current_bpms = Value::pointers_to_vals(h, base, &offsets.current_bpm[0..decks])?;
-        let sample_positions =
-            Value::pointers_to_vals(h, base, &offsets.sample_position[0..decks])?;
-        let track_infos =
-            PointerChainValue::pointers_to_vals(h, base, &offsets.track_info[0..decks]);
-        let anlz_paths = PointerChainValue::pointers_to_vals(h, base, &offsets.anlz_path[0..decks]);
+        let current_bpms = mem.new_values(&offsets.current_bpm[0..decks])?;
+        let sample_positions = mem.new_values(&offsets.sample_position[0..decks])?;
+        let track_infos = mem.new_pointerchain_values(&offsets.track_info[0..decks]);
+        let anlz_paths = mem.new_pointerchain_values(&offsets.anlz_path[0..decks]);
 
         let deckcount = current_bpms.len();
 
-        let masterdeck_index_val: Value<u8> = Value::new(h, base, &offsets.masterdeck_index)?;
+        let masterdeck_index_val: Value<u8> = mem.new_value(&offsets.masterdeck_index)?;
 
         Ok(Self {
             current_bpms,
@@ -159,12 +57,13 @@ impl Rekordbox {
             track_infos,
             anlz_paths,
             phraseparser: PhraseParser::new(),
+            mem
         })
     }
 
-    fn read_timing_data(&self, deck: usize) -> Result<TimingDataRaw, ReadError> {
-        let sample_position = self.sample_positions[deck].read()?;
-        let current_bpm = self.current_bpms[deck].read()?;
+    fn read_timing_data(&self, deck: usize) -> Result<TimingDataRaw, MemoryReadError> {
+        let sample_position = self.sample_positions[deck].read(&self.mem)?;
+        let current_bpm = self.current_bpms[deck].read(&self.mem)?;
 
         Ok(TimingDataRaw {
             current_bpm,
@@ -172,15 +71,15 @@ impl Rekordbox {
         })
     }
 
-    fn read_masterdeck_index(&self) -> Result<usize, ReadError> {
-        Ok(self.masterdeck_index.read()? as usize)
+    fn read_masterdeck_index(&self) -> Result<usize, MemoryReadError> {
+        Ok(self.masterdeck_index.read(&self.mem)? as usize)
     }
 
-    fn get_track_infos(&self) -> Result<Vec<TrackInfo>, ReadError> {
+    fn get_track_infos(&self) -> Result<Vec<TrackInfo>, MemoryReadError> {
         (0..self.deckcount)
             .map(|i| {
                 let raw = self.track_infos[i]
-                    .read()?
+                    .read(&self.mem)?
                     .into_iter()
                     .take_while(|x| *x != 0x00)
                     .collect::<Vec<u8>>();
@@ -199,11 +98,11 @@ impl Rekordbox {
             .collect()
     }
 
-    fn get_anlz_paths(&self) -> Result<Vec<String>, ReadError> {
+    fn get_anlz_paths(&self) -> Result<Vec<String>, MemoryReadError> {
         (0..self.deckcount)
             .map(|i| {
                 let raw = self.anlz_paths[i]
-                    .read()?
+                    .read(&self.mem)?
                     .into_iter()
                     .take_while(|x| *x != 0x00)
                     .collect::<Vec<u8>>();
@@ -266,7 +165,7 @@ pub struct BeatKeeper {
     watcher_rx: mpsc::Receiver<notify::Result<notify::Event>>,
 
     logger: ScopedLogger,
-    last_error: Option<ReadError>,
+    last_error: Option<MemoryReadError>,
     keep_warm: bool,
     decks: usize,
 
@@ -353,7 +252,7 @@ impl BeatKeeper {
             master_td_tracker: TrackingDataTracker::new(),
             anlz_paths: vec![ChangeTrackedValue::new("".to_string()); 4],
             watcher,
-            watcher_rx
+            watcher_rx,
         };
 
         let mut rekordbox = None;
@@ -399,51 +298,13 @@ impl BeatKeeper {
         }
     }
 
-    fn report_error(&mut self, e: ReadError) {
-        if let Some(last) = &self.last_error {
-            if e == *last {
-                return;
-            }
-        }
-        match &e.error {
-            TAExternalError::ProcessNotFound | TAExternalError::ModuleNotFound => {
-                self.logger.err("Rekordbox process not found!");
-            }
-            TAExternalError::SnapshotFailed(e) => {
-                self.logger.err(&format!("Snapshot failed: {e}"));
-                self.logger.info("    Ensure Rekordbox is running!");
-            }
-            TAExternalError::ReadMemoryFailed(e) => {
-                self.logger.err(&format!("Read memory failed: {e}"));
-                self.logger.info("    Try the following:");
-                self.logger
-                    .info("    - Wait for Rekordbox to start and load a track");
-                self.logger.info(
-                    "    - Ensure you have selected the correct Rekordbox version in the config",
-                );
-                self.logger
-                    .info("    - Check the number of decks in the config");
-                self.logger.info("    - Update the offsets and program");
-                self.logger.info("    If nothing works, wait for an update, or enable Debug in config and submit this entire error message on an Issue on GitHub.");
-            }
-            TAExternalError::WriteMemoryFailed(e) => {
-                self.logger.err(&format!("Write memory failed: {e}"));
-            }
-        };
-        if let Some(p) = &e.pointer {
-            self.logger.debug(&format!("Pointer: {p}"));
-        }
-        if e.address != 0 {
-            self.logger.debug(&format!("Address: {:X}", e.address));
-        }
-        self.last_error = Some(e);
-    }
+    
 
     fn update(
         &mut self,
         rb: &Rekordbox,
         slow_update: bool,
-    ) -> Result<(), ReadError> {
+    ) -> Result<(), MemoryReadError> {
         // let masterdeck_index_changed = self.masterdeck_index.set(td.masterdeck_index as usize);
         let masterdeck_index_changed = self.masterdeck_index.set(rb.read_masterdeck_index()?);
         if self.masterdeck_index.value >= rb.deckcount {
@@ -595,25 +456,33 @@ impl BeatKeeper {
                     if self.anlz_paths[i].value != path {
                         self.logger.debug(&format!("Deck {i} ANLZ file path changed: {path}"));
 
-                        self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
-                        });
-                        self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
-                        });
+                        // Only unwatch if there was a previous path (not empty)
+                        if !self.anlz_paths[i].value.is_empty() {
+                            self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
+                                self.logger.err(&format!("Deck {i}: Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
+                            });
+                            self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
+                                self.logger.err(&format!("Deck {i}: Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
+                            });
+                        }
+
                         self.anlz_paths[i].set(path);
-                        self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path for{}: {}", &self.anlz_paths[i].value, e));
-                        });
-                        self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive).unwrap_or_else(|e| {
-                            self.logger.err(&format!("Deck {i}: Failed to watch path Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
-                        });
+
+                        // Only watch if the new path is not empty
+                        if !self.anlz_paths[i].value.is_empty() {
+                            if let Err(e) = self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value), notify::RecursiveMode::NonRecursive) {
+                                self.logger.err(&format!("Deck {i}: Failed to watch path {}: {}", &self.anlz_paths[i].value, e));
+                            }
+                            if let Err(e) = self.watcher.watch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")), notify::RecursiveMode::NonRecursive) {
+                                self.logger.err(&format!("Deck {i}: Failed to watch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
+                            }
+                        }
                     }
 
                     // TODO watch out here, there's probably loads of things that can go wrong
                     let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value) else {
                         self.logger.err(&format!("Failed to read anlz file for deck {i}: {}", &self.anlz_paths[i].value));
-                        self.logger.err("If you are loading a new Tidal track for the first time, eject and load it again.");
+                        self.logger.err("If you are loading a new streaming track for the first time, eject and load it again.");
                         continue;
                     };
                     let mut reader = Cursor::new(bytes);
@@ -637,7 +506,7 @@ impl BeatKeeper {
                     let bytes = match std::fs::read(self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
                         Ok(b) => b,
                         Err(e) => {
-                            self.logger.err(&format!("Failed to read EXT file for song {}, {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value));
+                            self.logger.err(&format!("Failed to read EXT file for song {}, path {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value));
                             continue;
                         }
                     };
@@ -677,6 +546,54 @@ impl BeatKeeper {
 
         Ok(())
     }
+
+    fn report_error(&mut self, e: MemoryReadError) {
+        if let Some(last) = &self.last_error {
+            if e == *last {
+                return;
+            }
+        }
+        let detail = if let Some(d) = &e.detail{
+            &format!(": {d}")
+        }else{
+            ""
+        };
+        match e.error_type {
+            MemoryReadErrorType::ProcessNotFound => {
+                self.logger.err("Rekordbox process not found!");
+            }
+            MemoryReadErrorType::SnapshotFailed => {
+                self.logger.err(&format!("Snapshot failed{detail}"));
+                self.logger.info("    Ensure Rekordbox is running!");
+            }
+            MemoryReadErrorType::ReadMemoryFailed => {
+                self.logger.err(&format!("Read memory failed{detail}"));
+                self.logger.info("    Try the following:");
+                self.logger.info("    - Wait for Rekordbox to start and load a track");
+                self.logger.info("    - Ensure you have selected the correct Rekordbox version in the config");
+                self.logger.info("    - Check the number of decks in the config");
+                self.logger.info("    - Update the offsets and program");
+                // self.logger.info("    - NOTE: Memory offsets from Windows may not work on macOS");
+                self.logger.info("    If nothing works, wait for an update, or enable Debug in config and submit this entire error message on an Issue on GitHub.");
+            }
+            MemoryReadErrorType::WriteMemoryFailed => {
+                // Should not happen as no memory is ever written
+                self.logger.err(&format!("Write memory failed{detail}"));
+                self.logger.err("This error should never happen - if it does, something is wrong");
+            }
+            MemoryReadErrorType::ModuleNotFound => {
+                self.logger.err(&format!("Module not found: {detail}"));
+                self.logger.err("This new exciting error has never been seen before! Please report this on GitHub!");
+            }
+        };
+        if let Some(p) = &e.pointer {
+            self.logger.debug(&format!("Pointer: {p}"));
+        }
+        if e.address != 0 {
+            self.logger.debug(&format!("Address: {:X}", e.address));
+        }
+        self.last_error = Some(e);
+    }
 }
 
 struct TrackTrackerResult {
@@ -708,7 +625,7 @@ impl TrackTracker {
         rb: &Rekordbox,
         offset_samples: i64,
         deck: usize,
-    ) -> Result<TrackTrackerResult, ReadError> {
+    ) -> Result<TrackTrackerResult, MemoryReadError> {
         let mut td = rb.read_timing_data(deck)?;
         if td.current_bpm == 0.0 {
             td.current_bpm = 120.0;

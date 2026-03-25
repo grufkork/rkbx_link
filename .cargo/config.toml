@@ -1,0 +1,10 @@
+# Cargo build configuration for rkbx_link
+
+# macOS build fix: Set deployment target to resolve C++ header compilation issues
+# This prevents cmake from targeting non-existent macOS versions (e.g., 26.1)
+[env]
+MACOSX_DEPLOYMENT_TARGET = "11.0"
+
+# Ensure C++ standard library is found
+CPLUS_INCLUDE_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1"
+CXXFLAGS = "-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
