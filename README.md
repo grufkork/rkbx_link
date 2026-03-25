@@ -1,9 +1,12 @@
 [More info/Buy](https://3gg.se/products/rkbx_link) | [Buy a License](https://store.3gg.se/)
 
 # rkbx_link for Rekordbox 
-Export live and rock-solid timing, phrase and track info to sync live lights and music to your DJ sets in Rekordbox! With support for Ableton Link, OSC, sACN, setlist generation and more. rkbx_link provides highly accurate low-latency data by reading transport position and beatgrid directly from memory. Essentially it's Pro DJ Link, but for Rekordbox!
+Export live and rock-solid timing, phrase and track info to sync live lights and music to your DJ sets in Rekordbox! With support for Ableton Link, OSC, sACN, setlist generation and more. rkbx_link provides highly accurate low-latency data by reading transport position and beatgrid directly from memory. It's Pro DJ Link, but for Rekordbox!
 
-With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.2.2. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! Or if you're using it commercially making loads of dosh, consider extra support on my [ko-fi](https://ko-fi.com/grufkork).
+- **Windows:** With the download of this software you will receive an evaluation license with offsets for Rekordbox 7.2.2. To get support for the latest versions of Rekordbox, [buy a license](https://3gg.se/products/rkbx_link) and get automatic updates! 
+- **MacOS** is community-supported and somewhat experimental. This means the data files are freely available, but they might get fewer updates or break without support.
+
+If you're using this commercially and making loads of dosh, consider extra support on my [ko-fi](https://ko-fi.com/grufkork).
 
 <img src="./logo_tiny.png" width="150">
 
@@ -45,6 +48,11 @@ Some other settings you will probably want to tune:
 | `7.2.8`, `7.2.6`, `7.2.4`, `7.2.3`, `7.2.2`, `7.1.4` |
 | [`6.8.5` will be added soon] |
 
+## MacOS versions supported
+| Rekordbox Version |
+| ----- |
+| `7.2.8` |
+
 # Supported protocols
 These are the available output modules together with what data can be sent with each. Transport export refers to sending the current beat timing, Track info is Title/Album/Artist and Phrase is the phrase analysis you can see under the waveform.
 - Ableton Link (master deck transport)
@@ -53,7 +61,7 @@ These are the available output modules together with what data can be sent with 
 - Setlist to file (logs master deck title/artist to a file and time when played)
 - Track to file (stores the current track info in a file for reading in other programs)
 
-For more details on how to configure them, check the next secion.
+For more details on how to configure them, check the next section.
 
 # Configuration
 Here's in detail how to configure the app, beat tracking and output modules. The configuration is stored next to the executable in a text file named `config`.
