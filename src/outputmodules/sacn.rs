@@ -22,7 +22,7 @@ use super::OutputModule;
 /// - +0 : BPM (u8). Capped to 250. Values > 250 are sent as 250.
 /// - +1 : Beat absolute counter (u8). Wraps 0..=255.
 ///
-pub struct SACN {
+pub struct Sacn {
     src: SacnSource,
     mode: Mode,
     targets: Vec<SocketAddr>,
@@ -39,7 +39,7 @@ pub struct SACN {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode { Multicast, Unicast }
 
-impl SACN 
+impl Sacn
 {
     pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
         // Local bind address
@@ -151,7 +151,7 @@ impl SACN
         let mut dmx = [0u8; 513];
         dmx[0] = 0x00; // start code
 
-        Ok(Box::new(SACN {
+        Ok(Box::new(Sacn {
             src,
             mode,
             targets,
@@ -214,7 +214,7 @@ impl SACN
     }
 }
 
-impl OutputModule for SACN {
+impl OutputModule for Sacn {
     fn bpm_changed_master(&mut self, bpm: f32){
         let mut v = bpm.round() as i32;
         v = v.clamp(0, 250);

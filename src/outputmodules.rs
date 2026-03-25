@@ -3,6 +3,7 @@ use crate::config::Config;
 use crate::log::ScopedLogger;
 
 pub mod abletonlink;
+pub mod display;
 pub mod file;
 pub mod osc;
 pub mod setlist;

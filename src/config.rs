@@ -20,11 +20,9 @@ impl Config {
                 if line.starts_with("#") || line.is_empty() {
                     continue;
                 }
-                let Some(splitindex) = line.find(" ") else {
-                    continue;
-                };
+                let splitindex = line.find(" ").unwrap_or(line.len());
                 let key = &line[..splitindex];
-                let value = &line[splitindex + 1..];
+                let value = &line[(splitindex + 1).min(line.len())..]; // Keys without values are simply blank
                 config.insert(key.to_string(), value.to_string());
             }
             if config.keys().len() == 0 {
