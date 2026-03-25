@@ -59,12 +59,10 @@ jobs:
           retention-days: 30
 
       - name: Create archive (win)
-        if: github.event_name == 'release'
         if: matrix.os == 'windows-latest'
         run: Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset_name }}
 
       - name: Create archive (mac)
-        if: github.event_name == 'release'
         if: matrix.os == 'macos-latest'
         run: tar -czf ${{ matrix.asset_name }} dist/
 
