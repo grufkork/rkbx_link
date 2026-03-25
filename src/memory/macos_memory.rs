@@ -73,7 +73,7 @@ impl MacMemory {
     /// Process name should be something like "rekordbox" or "Rekordbox"
     pub fn from_process_name(name: &str) -> Result<Self, MemoryError> {
         let mut sys = System::new();
-        sys.refresh_processes(ProcessesToUpdate::All);
+        sys.refresh_processes(ProcessesToUpdate::All, true);
 
         // Find process by name (case insensitive)
         // Prefer exact match to avoid matching helper processes like "rekordboxAgent"

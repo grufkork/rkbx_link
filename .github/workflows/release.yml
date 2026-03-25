@@ -10,8 +10,9 @@ jobs:
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -30,6 +31,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Get cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Build release
         run: cargo build --release
