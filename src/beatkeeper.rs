@@ -484,8 +484,12 @@ impl BeatKeeper {
 
                         // Only unwatch if there was a previous path (not empty)
                         if !self.anlz_paths[i].value.is_empty() {
-                            let _ = self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value));
-                            let _ = self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT")));
+                            self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value)).unwrap_or_else(|e| {
+                                self.logger.err(&format!("Deck {i}: Failed to unwatch path {}: {}", &self.anlz_paths[i].value, e));
+                            });
+                            self.watcher.unwatch(std::path::Path::new(&self.anlz_paths[i].value.replace(".DAT", ".EXT"))).unwrap_or_else(|e| {
+                                self.logger.err(&format!("Deck {i}: Failed to unwatch path {}: {}", &self.anlz_paths[i].value.replace(".DAT", ".EXT"), e));
+                            });
                         }
 
                         self.anlz_paths[i].set(path);
@@ -504,7 +508,7 @@ impl BeatKeeper {
                     // TODO watch out here, there's probably loads of things that can go wrong
                     let Ok(bytes) = std::fs::read(&self.anlz_paths[i].value) else {
                         self.logger.err(&format!("Failed to read anlz file for deck {i}: {}", &self.anlz_paths[i].value));
-                        self.logger.err("If you are loading a new Tidal track for the first time, eject and load it again.");
+                        self.logger.err("If you are loading a new streaming track for the first time, eject and load it again.");
                         continue;
                     };
                     let mut reader = Cursor::new(bytes);
@@ -528,7 +532,7 @@ impl BeatKeeper {
                     let bytes = match std::fs::read(self.anlz_paths[i].value.replace(".DAT", ".EXT")) {
                         Ok(b) => b,
                         Err(e) => {
-                            self.logger.err(&format!("Failed to read EXT file for song {}, {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value));
+                            self.logger.err(&format!("Failed to read EXT file for song {}, path {}: {e}", &self.track_infos[i].value.title, &self.anlz_paths[i].value));
                             continue;
                         }
                     };
