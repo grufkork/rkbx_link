@@ -1,0 +1,68 @@
+name: Build release
+
+on:
+  workflow_dispatch:
+  pull_request:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: rkbx_link_windows
+            asset_name: rkbx_link_win.zip
+            executable_path: target/release/rkbx_link.exe
+            offsets_path: data/offsets
+          - os: macos-latest
+            artifact_name: rkbx_link_macos
+            asset_name: rkbx_link_mac.zip
+            executable_path: target/release/rkbx_link
+            offsets_path: data/offsets-macos
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stabele
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Collect release files
+        shell: bash
+        run: |
+          mkdir -p dist
+          mkdir -p dist/data
+          cp LICENSE dist/
+          cp README.md dist/
+          cp config dist/
+          cp ${{ matrix.executable_path }} dist/
+          cp ${{ matrix.offsets_path }} dist/data/
+
+      - name: Create archive (win)
+        if: matrix.os == 'windows-latest'
+        run: Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset_name }}
+      - name: Create archive (mac)
+        if: matrix.os == 'macos-latest'
+        run: tar -czvf ${{ matrix.asset_name }} -C dist .
+
+
+      - name: Upload artifact (preview)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix-artifact_name }}
+          path: ${{ matrix.asset_name }}
+          retention-days: 30
+
+      - name: Upload release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -58,7 +58,7 @@ impl OutputModule for AbletonLink {
             self.cumulative_error = 0.0;
             // println!("SET -----------------------------------------------------");
             self.state
-                .force_beat_at_time(beat.into(), self.link.clock_micros() as u64, 4.);
+                .force_beat_at_time(beat.into(), self.link.clock_micros() as i64, 4.);
             self.link.commit_app_session_state(&self.state);
         }
         self.last_beat = beat;
