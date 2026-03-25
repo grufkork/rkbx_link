@@ -3,13 +3,13 @@ use core::fmt;
 
 use crate::log::ScopedLogger;
 
-
-
-pub mod macos_memory;
+#[cfg(target_os = "windows")]
 pub mod windows_memory;
-
 #[cfg(target_os = "windows")]
 pub type ActiveBackend = windows_memory::WindowsMem;
+
+#[cfg(target_os = "macos")]
+pub mod macos_memory;
 #[cfg(target_os = "macos")]
 pub type ActiveBackend = macos_memory::MacMemory;
 
@@ -28,10 +28,6 @@ impl MemReader{
     pub fn new() -> Result<Self, MemoryReadError>{
         let backend = ActiveBackend::new()?;
         Ok(MemReader { base: backend.get_base_offset(), backend })
-    }
-
-    fn get_base_offset(&self) -> usize{
-        self.backend.get_base_offset()
     }
 
     pub fn new_value<T>(&self, offsets: &Pointer) -> Result<Value<T>, MemoryReadError>{
@@ -95,15 +91,13 @@ impl<T> Value<T> {
 
 
 pub struct PointerChainValue<T> {
-    base: usize,
     pointer: Pointer,
     _marker: PhantomData<T>,
 }
 
 impl<T> PointerChainValue<T> {
-    fn new(mem: &MemReader, pointer: Pointer) -> PointerChainValue<T> {
+    fn new(_mem: &MemReader, pointer: Pointer) -> PointerChainValue<T> {
         Self {
-            base: mem.base,
             pointer,
             _marker: PhantomData::<T>,
         }
@@ -117,6 +111,7 @@ impl<T> PointerChainValue<T> {
 }
 
 #[derive(PartialEq, Clone)]
+#[allow(dead_code)]
 pub enum MemoryReadErrorType{
     ProcessNotFound,
     SnapshotFailed,

@@ -96,7 +96,6 @@ pub struct Osc {
     send_period_counter: i32,
     last_beat_master: f32,
     last_beats: Vec<f32>,
-    last_error_logged: std::time::Instant,
 }
 
 
@@ -137,13 +136,6 @@ impl Osc {
         };
         if let Err(e) = self.socket.send(&packet) {
             self.logger.err(&format!("Failed to send OSC message: {e}"));
-            // QUESTION: Does this happen? I have never had this fail
-            //
-            // Only log errors once every 5 seconds to avoid spam
-            // if self.last_error_logged.elapsed() >= std::time::Duration::from_secs(5) {
-            //     self.logger.err(&format!("Failed to send OSC message: {e}"));
-            //     self.last_error_logged = std::time::Instant::now();
-            // }
         };
     }
 }
@@ -182,7 +174,6 @@ impl Osc {
             send_period_counter: 0,
             last_beat_master: 0.0,
             last_beats: vec![0.0; 4],
-            last_error_logged: std::time::Instant::now(),
         }))
     }
 }
