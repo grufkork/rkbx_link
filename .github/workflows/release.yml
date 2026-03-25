@@ -16,15 +16,15 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: rkbx_link_windows
-            asset_name: rkbx_link_win.zip
+            artifact_name: rkbx_link_win
             executable_path: target/release/rkbx_link.exe
             offsets_path: data/offsets
+            asset_name: rkbx_link_win.zip
           - os: macos-latest
             artifact_name: rkbx_link_macos
-            asset_name: rkbx_link_mac.zip
             executable_path: target/release/rkbx_link
             offsets_path: data/offsets-macos
+            asset_name: rkbx_link_mac.tar.gz
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,20 +49,24 @@ jobs:
           cp ${{ matrix.executable_path }} dist/
           cp ${{ matrix.offsets_path }} dist/data/
 
-      - name: Create archive (win)
-        if: matrix.os == 'windows-latest'
-        run: Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset_name }}
-      - name: Create archive (mac)
-        if: matrix.os == 'macos-latest'
-        run: tar -czvf ${{ matrix.asset_name }} -C dist .
 
 
       - name: Upload artifact (preview)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.asset_name }}
+          path: dist/
           retention-days: 30
+
+      - name: Create archive (win)
+        if: github.event_name == 'release'
+        if: matrix.os == 'windows-latest'
+        run: Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset_name }}
+
+      - name: Create archive (mac)
+        if: github.event_name == 'release'
+        if: matrix.os == 'macos-latest'
+        run: tar -czf ${{ matrix.asset_name }} dist/
 
       - name: Upload release
         if: github.event_name == 'release'
