@@ -21,11 +21,11 @@ pub struct Display {
 
 impl Display {
     pub fn create(conf: Config, logger: ScopedLogger) -> ModuleCreateOutput {
-        let interval_secs: u64 = conf.get_or_default("interval", 3);
+        let interval_secs: f32 = conf.get_or_default("interval", 1.);
 
         Ok(Box::new(Display {
             logger,
-            interval: Duration::from_secs(interval_secs),
+            interval: Duration::from_secs_f32(interval_secs),
             last_display: Instant::now(),
             decks: vec![DeckState::default(); 4],
         }))

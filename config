@@ -26,12 +26,11 @@ keeper.keep_warm true
 # Number of active decks
 keeper.decks 2
 
-
 # == Live Display ==
 # Show periodic status updates with deck info
-display.enabled true
+display.enabled false
 # Update interval in seconds
-display.interval 3
+display.interval 1.0
 
 
 # == Ableton Link ==
@@ -71,8 +70,8 @@ osc.msg.n/phrase false
 osc.msg.master/beat/subdiv 4
 osc.msg.master/beat/trigger
 
-osc.msg.beat.subdiv
-osc.msg.beat.trigger
+osc.msg.n/beat/subdiv
+osc.msg.n/beat/trigger
 
 # Also send a 0 value to simulate the release of a button
 

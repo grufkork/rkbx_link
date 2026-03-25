@@ -161,7 +161,7 @@ impl Osc {
         // UDP doesn't require an established connection to send
         let destination = conf.get_or_default("destination", "127.0.0.1:9999".to_string());
         if let Err(e) = socket.connect(&destination) {
-            logger.warn(&format!("Could not connect to OSC receiver at {}: {}", destination, e));
+            logger.warn(&format!("Could not open UDP socket to OSC receiver at {}: {}", destination, e));
             logger.info("OSC will continue attempting to send messages");
         }
 
@@ -178,6 +178,7 @@ impl Osc {
     }
 }
 
+// TODO: Avoid formatting strings every loop
 impl OutputModule for Osc {
     fn pre_update(&mut self) {
         self.send_period_counter = (self.send_period_counter + 1) % self.send_period;
@@ -203,11 +204,6 @@ impl OutputModule for Osc {
         if self.send_period_counter != 0 {
             return;
         }
-
-        /*if self.message_toggles.beat_master{
-            self.send_float("/master/beat", beat);
-        }*/
-
 
         for d in &self.message_toggles.beat_master_subdivs{
             let value = (beat % d) / d;

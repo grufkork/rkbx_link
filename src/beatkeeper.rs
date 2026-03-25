@@ -38,32 +38,6 @@ pub struct Rekordbox {
 
 impl Rekordbox {
     fn new(offsets: RekordboxOffsets, decks: usize) -> Result<Self, MemoryReadError> {
-        // let rb = match Process::from_process_name("rekordbox.exe") {
-        // let rb = match Process::from_process_name("rekordbox") {
-        //     Ok(p) => p,
-        //     Err(e) => {
-        //         return Err(ReadError {
-        //             pointer: None,
-        //             address: 0,
-        //             error: e,
-        //         })
-        //     }
-        // };
-        // let h = rb.process_handle;
-        // let h = &rb.process_handle;
-        //
-        // let base = match rb.get_module_base("rekordbox.exe") {
-        // let base = match rb.get_module_base("rekordbox") {
-        //     Ok(b) => b,
-        //     Err(e) => {
-        //         return Err(ReadError {
-        //             pointer: None,
-        //             address: 0,
-        //             error: e,
-        //         })
-        //     }
-        // };
-
         let mem = crate::memory::MemReader::new()?;
 
         let current_bpms = mem.new_values(&offsets.current_bpm[0..decks])?;

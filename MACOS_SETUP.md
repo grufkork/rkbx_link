@@ -53,21 +53,6 @@ This is a one-time command and will persist after reboots.
 
 ## Test Programs
 
-### memory_browser
-
-Shows memory locations that are close to an existing location.
-Used to find the position address relative to the BPM address.
-
-### show_anlz_paths
-
-Shows the most recently modified ANLZ files.
-Used to figure out which ANLZ file belongs to which song.
-
-### test_offset
-
-Demo program to show live info from Rekordbox.
-Used to ensure that addresses are correct when you find one.
-
 ### resign_rekordbox.sh
 
 Removes Apple notarized signature and re-signs with our own.
