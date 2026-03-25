@@ -95,7 +95,7 @@ pub struct Osc {
     send_period: i32,
     send_period_counter: i32,
     last_beat_master: f32,
-    last_beats: Vec<f32>
+    last_beats: Vec<f32>,
 }
 
 
@@ -157,6 +157,13 @@ impl Osc {
             logger.err(&format!("Failed to open connection to receiver: {e}"));
             return Err(());
         }
+        // Try to connect to destination, but don't fail if receiver isn't ready yet
+        // UDP doesn't require an established connection to send
+        let destination = conf.get_or_default("destination", "127.0.0.1:9999".to_string());
+        if let Err(e) = socket.connect(&destination) {
+            logger.warn(&format!("Could not open UDP socket to OSC receiver at {}: {}", destination, e));
+            logger.info("OSC will continue attempting to send messages");
+        }
 
         Ok(Box::new(Osc {
             socket,
@@ -171,6 +178,7 @@ impl Osc {
     }
 }
 
+// TODO: Avoid formatting strings every loop
 impl OutputModule for Osc {
     fn pre_update(&mut self) {
         self.send_period_counter = (self.send_period_counter + 1) % self.send_period;
@@ -196,11 +204,6 @@ impl OutputModule for Osc {
         if self.send_period_counter != 0 {
             return;
         }
-
-        /*if self.message_toggles.beat_master{
-            self.send_float("/master/beat", beat);
-        }*/
-
 
         for d in &self.message_toggles.beat_master_subdivs{
             let value = (beat % d) / d;
