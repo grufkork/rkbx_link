@@ -94,8 +94,11 @@ pub struct Osc {
     message_toggles: MessageToggles,
     send_period: i32,
     send_period_counter: i32,
+<<<<<<< master
+=======
     last_beat_master: f32,
     last_beats: Vec<f32>,
+>>>>>>> master
 }
 
 
@@ -200,6 +203,10 @@ impl OutputModule for Osc {
         self.send_float(&format!("/{deck}/bpm/original"), bpm);
     }
 
+    fn bpm_changed(&mut self, bpm: f32, deck: usize) {
+        self.send_float(&format!("/bpm/{deck}/current"), bpm);
+    }
+
     fn beat_update_master(&mut self, beat: f32) {
         if self.send_period_counter != 0 {
             return;
@@ -271,6 +278,14 @@ impl OutputModule for Osc {
         self.send_string("/master/track/title", &track.title);
         self.send_string("/master/track/artist", &track.artist);
         self.send_string("/master/track/album", &track.album);
+    }
+
+    fn anlz_path_changed(&mut self, path: &str, deck: usize) {
+        self.send_string(&format!("/track/{deck}/anlz_path"), path);
+    }
+
+    fn masterdeck_index_changed(&mut self, index: usize) {
+        self.send_int("/masterdeck/index", index as i32);
     }
 
     fn slow_update(&mut self) {

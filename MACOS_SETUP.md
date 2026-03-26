@@ -1,5 +1,9 @@
 # macOS Setup for rkbx_link
 
+## Configuration
+
+You'll need to update the config to look for Rekordbox 7.2.8. The default config is for Windows.
+
 ## Re-signing Rekordbox
 
 macOS prevents reading memory from other processes, even with `sudo`. This is due to:
@@ -51,7 +55,7 @@ This is a one-time command and will persist after reboots.
   - Pointer scan, static, 3 deep
   - Compare pointermap 2 against pointermap 1
 
-## Test Programs
+## Supporting Programs
 
 ### resign_rekordbox.sh
 

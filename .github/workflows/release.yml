@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
   release:
-    types: [created]
+    types: [published]
 
 jobs:
   build:
@@ -59,17 +59,16 @@ jobs:
           retention-days: 30
 
       - name: Create archive (win)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' && github.event_name == 'release'
         run: Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset_name }}
 
       - name: Create archive (mac)
-        if: matrix.os == 'macos-latest'
-        run: tar -czf ${{ matrix.asset_name }} dist/
+        if: matrix.os == 'macos-latest' && github.event_name == 'release'
+        run: tar -czf ${{ matrix.asset_name }} -C dist .
 
       - name: Upload release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ matrix.asset_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name}} ${{ matrix.asset_name }} --clobber

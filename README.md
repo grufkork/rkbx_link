@@ -45,13 +45,13 @@ Some other settings you will probably want to tune:
 
 | Rekordbox Version  |
 | ----- |
-| `7.2.8`, `7.2.6`, `7.2.4`, `7.2.3`, `7.2.2`, `7.1.4` |
+| `7.2.10`, `7.2.8`, `7.2.6`, `7.2.4`, `7.2.3`, `7.2.2`, `7.1.4` |
 | [`6.8.5` will be added soon] |
 
 ## MacOS versions supported
 | Rekordbox Version |
 | ----- |
-| `7.2.8` |
+| `7.2.8` (Apple Silicon only) |
 
 # Supported protocols
 These are the available output modules together with what data can be sent with each. Transport export refers to sending the current beat timing, Track info is Title/Album/Artist and Phrase is the phrase analysis you can see under the waveform.
