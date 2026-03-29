@@ -59,6 +59,7 @@ fn main() {
     }
 
     let mut config = config::Config::read(ScopedLogger::new(&logger, "Config"));
+    let yes_to_all = config.get_or_default("app.yesToAll", false);
 
     let logger = Rc::new(Logger::new(config.get_or_default("app.debug", true)));
     config.logger = ScopedLogger::new(&logger, "Config");
@@ -92,7 +93,7 @@ fn main() {
     }
 
     let license = config.get_or_default::<String>("app.licensekey", "evaluation".to_string());
-    update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"), update);
+    update_routine(&license, REPO, ScopedLogger::new(&logger, "Update"), update, yes_to_all);
 
     let offsets =
         match RekordboxOffsets::from_file(OFFSETS_PATH, ScopedLogger::new(&logger, "Parser")) {
@@ -138,7 +139,7 @@ fn main() {
     );
 }
 
-fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offsets: bool) {
+fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offsets: bool, is_yes_to_all: bool) {
     logger.info("Checking for updates...");
     // Exe update
     let new_exe_version = match get_git_file_http("version_exe", repo) {
@@ -214,7 +215,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offset
         update_offsets = true;
     }
 
-    if update_offsets && y_n("Update offsets?") {
+    if update_offsets && (is_yes_to_all || y_n("Update offsets?")) {
         // Offset update available
         logger.info("Downloading offsets...");
         match get_licensed_file("offsets", license, &logger) {
