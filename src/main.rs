@@ -215,7 +215,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offset
         update_offsets = true;
     }
 
-    if update_offsets && (is_yes_to_all || y_n("Update offsets?")) {
+    if update_offsets && y_n("Update offsets?", is_yes_to_all) {
         // Offset update available
         logger.info("Downloading offsets...");
         match get_licensed_file("offsets", license, &logger) {
@@ -268,7 +268,11 @@ fn get_licensed_file(path: &str, license: &str, logger: &ScopedLogger) -> Result
     }
 }
 
-fn y_n(msg: &str) -> bool {
+fn y_n(msg: &str, is_yes_to_all: bool) -> bool {
+    if is_yes_to_all {
+        return true;
+    }
+
     use std::io::{self, Write};
     let mut input = String::new();
     print!("{msg} (y/n): ");
