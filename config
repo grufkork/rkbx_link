@@ -9,7 +9,8 @@ app.licensekey evaluation
 app.auto_update false
 # Print debug logs
 app.debug false
-
+# Accept all y/n questions (mainly for use in non-user-controlled environments)
+app.yes_to_all false
 
 # == Beatkeeper ==
 # Rekordbox version to target
