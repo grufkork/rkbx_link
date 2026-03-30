@@ -42,7 +42,7 @@ Some other settings you will probably want to tune:
 - `keeper.delay_compensation` to compensate for latency in your audio interface, lights or network. You can use both positive and negative values.
 
 ## Supported versions (with license)
-
+Currently holding off support for RB v7.2.11-12 due to reports of USB/library corruption and a slew of other issues.
 | Rekordbox Version  |
 | ----- |
 | `7.2.10`, `7.2.8`, `7.2.6`, `7.2.4`, `7.2.3`, `7.2.2`, `7.1.4` |
