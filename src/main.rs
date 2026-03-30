@@ -59,7 +59,7 @@ fn main() {
     }
 
     let mut config = config::Config::read(ScopedLogger::new(&logger, "Config"));
-    let yes_to_all = config.get_or_default("app.yesToAll", false);
+    let yes_to_all = config.get_or_default("app.yes_to_all", false);
 
     let logger = Rc::new(Logger::new(config.get_or_default("app.debug", true)));
     config.logger = ScopedLogger::new(&logger, "Config");
