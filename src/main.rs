@@ -233,9 +233,7 @@ fn update_routine(license: &str, repo: &str, logger: ScopedLogger, update_offset
 
 fn get_git_file_http(path: &str, repo: &str) -> Result<String, String> {
     let url = format!("https://raw.githubusercontent.com/{repo}/{path}");
-    let Ok(res) = reqwest::blocking::get(&url) else {
-        return Err(format!("Get error: {}", &url));
-    };
+    let res = reqwest::blocking::get(&url).map_err(|_| format!("Get error: {}", &url))?;
     if res.status().is_success() {
         Ok(res.text().map_err(|e| e.to_string())?)
     } else {
