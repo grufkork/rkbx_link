@@ -44,7 +44,7 @@ Some other settings you will probably want to tune:
 ## Supported versions (with license)
 | Rekordbox Version  |
 | ----- |
-| `7.2.13`, `7.2.10`, `7.2.8`, `7.2.6`, `7.2.4`, `7.2.3`, `7.2.2`, `7.1.4` |
+| `7.2.14`, `7.2.13`, `7.2.10`, `7.2.8`, `7.2.6`, `7.2.4`, `7.2.3`, `7.2.2`, `7.1.4` |
 | [`6.8.5` will be added soon] |
 
 ## MacOS community supported versions
