@@ -497,7 +497,15 @@ impl BeatKeeper {
                         #[allow(clippy::single_match)]
                         match section.content {
                             anlz::Content::BeatGrid(grid) => {
-                                self.track_trackers[i].beatgrid = Some(grid);
+                                if grid.beats.is_empty() {
+                                    self.logger.err(&format!(
+                                        "Empty beatgrid for deck {i} ({}). Eject and reload the track if this is a new streaming load.",
+                                        &self.track_infos[i].value.title
+                                    ));
+                                    self.track_trackers[i].beatgrid = None;
+                                } else {
+                                    self.track_trackers[i].beatgrid = Some(grid);
+                                }
                             }
                             _ => (),
                         }
@@ -523,7 +531,11 @@ impl BeatKeeper {
                         #[allow(clippy::single_match)]
                         match section.content {
                             anlz::Content::SongStructure(phrases) => {
-                                self.track_trackers[i].songstructure = Some(phrases.data);
+                                if phrases.data.phrases.is_empty() {
+                                    self.track_trackers[i].songstructure = None;
+                                } else {
+                                    self.track_trackers[i].songstructure = Some(phrases.data);
+                                }
                             }
                             _ => (),
                         }
@@ -639,22 +651,11 @@ impl TrackTracker {
         let time_now = (td.sample_position + offset_samples) as f32 / 44100.;
         let mut beat_idx: usize = 0;
         if let Some(grid) = &self.beatgrid {
-            for gridbeat in grid.beats.iter() {
-                if gridbeat.time as f32 / 1000. >= time_now {
-                    break;
-                }
-                beat_idx += 1;
+            if let Some((grid_beat, grid_bpm, idx)) = beat_from_grid(&grid.beats, time_now) {
+                beat = grid_beat;
+                original_bpm = grid_bpm;
+                beat_idx = idx;
             }
-            beat_idx = beat_idx.saturating_sub(1);
-            let gridbeat = &grid.beats[beat_idx];
-            // println!("{} - {}", time, time_now);
-            let remainder = time_now - gridbeat.time as f32 / 1000.;
-            original_bpm = gridbeat.tempo as f32 / 100.0;
-            let spb = 1. / (gridbeat.tempo as f32 / 100. / 60.0);
-
-            let b = (gridbeat.beat_number + 3) % 4;
-            // println!("{b} {idx}");
-            beat = b as f32 + remainder / spb;
         }
 
 
@@ -671,27 +672,82 @@ impl TrackTracker {
 
         let mut phrase_idx: usize = 0;
         if let Some(songstructure) = &self.songstructure {
-            // println!("Song structure: {:?}", songstructure);
-            for phrase in songstructure.phrases.iter() {
-                // println!("beat {} / {beat_idx}", phrase.beat);
-                if phrase.beat as usize > beat_num {
-                    break;
+            if !songstructure.phrases.is_empty() {
+                for phrase in songstructure.phrases.iter() {
+                    if phrase.beat as usize > beat_num {
+                        break;
+                    }
+                    phrase_idx += 1;
                 }
-                phrase_idx += 1;
-            }
-            phrase_idx = phrase_idx.saturating_sub(1);
-            // println!("{phrase_idx} {beat_idx} {:?}", &songstructure.phrases[phrase_idx].kind);
-            // println!("Phrase: {beat_num} {}", rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]));
-            tout.phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]);
-            if phrase_idx + 1 < songstructure.phrases.len() {
-                let next_phrase = &songstructure.phrases[phrase_idx + 1];
-                let next_phrase_in = next_phrase.beat as i32 - beat_num as i32;
-                tout.next_phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, next_phrase);
-                tout.next_phrase_in = next_phrase_in;
-                // println!("{}: {next_phrase_in}", rb.phraseparser.get_phrase_name(&songstructure.mood, next_phrase));
+                phrase_idx = phrase_idx.saturating_sub(1);
+                tout.phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]);
+                if phrase_idx + 1 < songstructure.phrases.len() {
+                    let next_phrase = &songstructure.phrases[phrase_idx + 1];
+                    let next_phrase_in = next_phrase.beat as i32 - beat_num as i32;
+                    tout.next_phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, next_phrase);
+                    tout.next_phrase_in = next_phrase_in;
+                }
             }
         }
 
         Ok(tout)
+    }
+}
+
+fn beat_from_grid(beats: &[anlz::Beat], time_now: f32) -> Option<(f32, f32, usize)> {
+    if beats.is_empty() {
+        return None;
+    }
+
+    let mut beat_idx: usize = 0;
+    for gridbeat in beats.iter() {
+        if gridbeat.time as f32 / 1000. >= time_now {
+            break;
+        }
+        beat_idx += 1;
+    }
+    beat_idx = beat_idx.saturating_sub(1);
+    let gridbeat = &beats[beat_idx];
+    let remainder = time_now - gridbeat.time as f32 / 1000.;
+    let original_bpm = gridbeat.tempo as f32 / 100.0;
+    let spb = 1. / (gridbeat.tempo as f32 / 100. / 60.0);
+    let b = (gridbeat.beat_number + 3) % 4;
+    let beat = b as f32 + remainder / spb;
+    Some((beat, original_bpm, beat_idx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn beat(beat_number: u16, tempo_centi: u16, time_ms: u32) -> anlz::Beat {
+        anlz::Beat {
+            beat_number,
+            tempo: tempo_centi,
+            time: time_ms,
+        }
+    }
+
+    #[test]
+    fn empty_beatgrid_does_not_panic() {
+        assert_eq!(beat_from_grid(&[], 0.0), None);
+        assert_eq!(beat_from_grid(&[], 12.5), None);
+    }
+
+    #[test]
+    fn first_beat_at_time_zero() {
+        let beats = [beat(1, 12800, 0)];
+        let (pos, bpm, idx) = beat_from_grid(&beats, 0.0).expect("non-empty grid");
+        assert_eq!(idx, 0);
+        assert!((bpm - 128.0).abs() < f32::EPSILON);
+        assert!((pos - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn time_before_first_beat_uses_first_entry() {
+        let beats = [beat(1, 12000, 1000)];
+        let (_, bpm, idx) = beat_from_grid(&beats, 0.0).expect("non-empty grid");
+        assert_eq!(idx, 0);
+        assert!((bpm - 120.0).abs() < f32::EPSILON);
     }
 }
