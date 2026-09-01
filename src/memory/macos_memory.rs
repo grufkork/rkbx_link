@@ -59,6 +59,21 @@ impl std::fmt::Display for MemoryError {
     }
 }
 
+impl From<MemoryError> for MemoryReadError {
+    fn from(e: MemoryError) -> Self {
+        let error_type = match e {
+            MemoryError::ProcessNotFound => MemoryReadErrorType::ProcessNotFound,
+            MemoryError::TaskAccessDenied => MemoryReadErrorType::ReadMemoryFailed,
+        };
+        MemoryReadError {
+            pointer: None,
+            address: 0,
+            detail: Some(e.to_string()),
+            error_type,
+        }
+    }
+}
+
 pub struct MacMemory {
     pub process_handle: ProcessHandle,
     pub base_address: usize,
@@ -66,7 +81,7 @@ pub struct MacMemory {
 
 impl MacMemory {
     pub fn new() -> Result<MacMemory, MemoryReadError>{
-        Ok(MacMemory::from_process_name("rekordbox").unwrap()) // FIX
+        Ok(MacMemory::from_process_name("rekordbox")?)
     }
 
     /// Find a process by name and get its handle
