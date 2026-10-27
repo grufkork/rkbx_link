@@ -637,28 +637,24 @@ impl TrackTracker {
         let mut original_bpm = 120.0;
 
         let time_now = (td.sample_position + offset_samples) as f32 / 44100.;
-        let mut beat_idx: usize = 0;
-        if let Some(grid) = &self.beatgrid {
-            for gridbeat in grid.beats.iter() {
-                if gridbeat.time as f32 / 1000. >= time_now {
-                    break;
-                }
-                beat_idx += 1;
-            }
-            beat_idx = beat_idx.saturating_sub(1);
-            let gridbeat = &grid.beats[beat_idx];
-            // println!("{} - {}", time, time_now);
+        let mut partition_point = 0;
+        if let Some(grid) = &self.beatgrid && !grid.beats.is_empty() {
+            let time_now_u32 = (time_now * 1000.) as u32;
+
+            partition_point = grid.beats.partition_point(|x| x.time < time_now_u32);
+            partition_point = partition_point.saturating_sub(1);
+
+            let gridbeat = &grid.beats[partition_point];
             let remainder = time_now - gridbeat.time as f32 / 1000.;
             original_bpm = gridbeat.tempo as f32 / 100.0;
             let spb = 1. / (gridbeat.tempo as f32 / 100. / 60.0);
 
             let b = (gridbeat.beat_number + 3) % 4;
-            // println!("{b} {idx}");
             beat = b as f32 + remainder / spb;
         }
 
 
-        let beat_num = beat_idx + 1;
+        let beat_num = partition_point + 1;
 
         let mut tout = TrackTrackerResult {
             beat,
@@ -669,22 +665,18 @@ impl TrackTracker {
             next_phrase_in: 0,
         };
 
-        let mut phrase_idx: usize = 0;
-        if let Some(songstructure) = &self.songstructure {
-            // println!("Song structure: {:?}", songstructure);
-            for phrase in songstructure.phrases.iter() {
-                // println!("beat {} / {beat_idx}", phrase.beat);
-                if phrase.beat as usize > beat_num {
-                    break;
-                }
-                phrase_idx += 1;
-            }
-            phrase_idx = phrase_idx.saturating_sub(1);
-            // println!("{phrase_idx} {beat_idx} {:?}", &songstructure.phrases[phrase_idx].kind);
-            // println!("Phrase: {beat_num} {}", rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]));
-            tout.phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_idx]);
-            if phrase_idx + 1 < songstructure.phrases.len() {
-                let next_phrase = &songstructure.phrases[phrase_idx + 1];
+        // let mut phrase_idx: usize = 0;
+        if let Some(songstructure) = &self.songstructure && !songstructure.phrases.is_empty() {
+            let beat_num_u16 = beat_num as u16;
+            let mut phrase_partition_point = songstructure.phrases.partition_point(|phrase| phrase.beat <= beat_num_u16);
+            phrase_partition_point = phrase_partition_point.saturating_sub(1);
+
+            tout.phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, &songstructure.phrases[phrase_partition_point]);
+
+            let next_phrase_idx = phrase_partition_point + 1;
+
+            if next_phrase_idx < songstructure.phrases.len() {
+                let next_phrase = &songstructure.phrases[next_phrase_idx];
                 let next_phrase_in = next_phrase.beat as i32 - beat_num as i32;
                 tout.next_phrase = rb.phraseparser.get_phrase_name(&songstructure.mood, next_phrase);
                 tout.next_phrase_in = next_phrase_in;
