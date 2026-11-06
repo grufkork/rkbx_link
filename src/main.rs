@@ -14,6 +14,7 @@ mod config;
 mod log;
 mod utils;
 mod memory;
+mod macos_sign;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -64,6 +65,17 @@ fn main() {
     let logger = Rc::new(Logger::new(config.get_or_default("app.debug", true)));
     config.logger = ScopedLogger::new(&logger, "Config");
     let applogger = ScopedLogger::new(&logger, "App");
+
+    #[cfg(target_os = "macos")]{
+        let resign_logger = ScopedLogger::new(&logger, "Resign");
+        // macos_sign::resign_rekordbox().unwrap();
+        match macos_sign::rkbx_signing_routine(&resign_logger){
+            Ok(_) => (),
+            Err(_) => {
+                resign_logger.err("rkbx_link will be unable to connect to Rekordbox!");
+            },
+        }
+    }
 
     let modules = vec![
         ModuleDefinition::new(

@@ -54,7 +54,7 @@ impl std::fmt::Display for MemoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MemoryError::ProcessNotFound => write!(f, "Process not found"),
-            MemoryError::TaskAccessDenied => write!(f, "Task access denied (need sudo or entitlements)"),
+            MemoryError::TaskAccessDenied => write!(f, "Task access denied (need entitlements!)"),
         }
     }
 }
@@ -124,8 +124,7 @@ impl MacMemory {
         if result != 0 {
             eprintln!("Failed to get task for PID {}: mach error code {}", pid, result);
             eprintln!();
-            eprintln!("Make sure Rekordbox has been re-signed with get-task-allow!");
-            eprintln!("Run: ./resign_rekordbox.sh");
+            eprintln!("Make sure Rekordbox has been resigned and restarted!");
             return Err(MemoryError::TaskAccessDenied);
         }
 
