@@ -14,6 +14,7 @@ pub struct Setlist {
     stopped: bool,
     filename: String,
     separator: String,
+    last_trackinfo: Option<TrackInfo>,
 }
 
 impl Setlist {
@@ -26,6 +27,7 @@ impl Setlist {
             stopped: true,
             start_time: 0,
             logger: logger.clone(),
+            last_trackinfo: None,
         };
 
         if let Ok(file) = File::open("setlist.txt") {
@@ -90,6 +92,11 @@ impl OutputModule for Setlist {
         if self.stopped {
             return;
         }
+        if let Some(last_track) = &self.last_trackinfo {
+            if last_track == track {
+                return;
+            }
+        }
         if let Ok(mut file) = OpenOptions::new()
             .read(false)
             .append(true)
@@ -110,5 +117,6 @@ impl OutputModule for Setlist {
         } else {
             self.logger.err("Failed to open setlist file for writing!");
         }
+        self.last_trackinfo = Some(track.clone());
     }
 }
